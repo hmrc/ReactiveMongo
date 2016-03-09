@@ -157,7 +157,7 @@ object MongoDriverSpec extends org.specs2.mutable.Specification {
 
   "Connection" should {
     "timeout when it is idle" in {
-      val proxyPort = 1999
+      val proxyPort = 20987
 
       Future { SleepyProxy.start(proxyPort, 27017, "localhost") }.map { ctx =>
         lazy val driver = MongoDriver()
@@ -169,7 +169,7 @@ object MongoDriverSpec extends org.specs2.mutable.Specification {
         try {
           Await.ready(_db.drop, timeout)
 
-          ctx.setSleepTime(600)
+          ctx.setSleepTime(1000)
 
           Await.result(_db.drop, timeout) must throwA[GenericDriverException](message = "socket disconnected")
         }

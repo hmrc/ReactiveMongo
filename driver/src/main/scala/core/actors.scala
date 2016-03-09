@@ -260,6 +260,9 @@ trait MongoDBSystem extends Actor {
       logger.warn(s"(State: Closing) SPURIOUS $msg (ignored, channel closed)")
       updateNodeSetOnDisconnect(channelId)
 
+    case msg @ Close =>
+      logger.debug(s"(State: Close) Received $msg")
+
     case other =>
       logger.error(s"(State: Closing) UNHANDLED MESSAGE: $other")
   }

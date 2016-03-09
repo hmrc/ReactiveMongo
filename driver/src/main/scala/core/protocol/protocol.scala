@@ -431,7 +431,7 @@ private[reactivemongo] class MongoHandler(receiver: ActorRef) extends IdleStateA
 
   override def channelIdle(ctx: ChannelHandlerContext, e: IdleStateEvent) = {
     log(e, s"channel timeout")
-    receiver ! ChannelClosed(e.getChannel.getId)
+    ctx.getChannel().close()
   }
 
   def log(e: ChannelEvent, s: String) =
