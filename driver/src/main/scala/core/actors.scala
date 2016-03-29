@@ -823,8 +823,8 @@ trait MongoDBSystem extends Actor {
         val channelIds = node.connections.map { c => c.channel.getId }
         awaitingResponses.retain { (_, awaitingResponse) =>
           if (channelIds contains awaitingResponse.channelID) {
-            logger.debug(s"completing promise ${awaitingResponse.promise} with error='primary timed out'")
-            awaitingResponse.promise.failure(GenericDriverException("primary timed out"))
+            logger.debug(s"completing promise ${awaitingResponse.promise} with error='node timed out - ${node.toShortString}'")
+            awaitingResponse.promise.failure(GenericDriverException(s"node timed out - ${node.toShortString}"))
             false
           }
           else true
