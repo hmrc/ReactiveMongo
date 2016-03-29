@@ -815,15 +815,19 @@ trait MongoDBSystem extends Actor {
           pingInfo = node.pingInfo.copy(
             lastIsMasterTime = System.currentTimeMillis(),
             lastIsMasterId = id))
-
-      } else if (node.pingInfo.lastIsMasterId >= PingInfo.pingTimeout) {
+      }
+      else if (System.currentTimeMillis() - node.pingInfo.lastIsMasterTime >= PingInfo.pingTimeout) {
+          logger.debug(s"Haven't heard from ${node.toShortString} in a while... hope it's all cool")
+          node
+      }
+      else if (node.pingInfo.lastIsMasterId >= PingInfo.pingTimeout) {
         node.copy(
           pingInfo = node.pingInfo.copy(
             lastIsMasterTime = System.currentTimeMillis(),
             lastIsMasterId = id,
             ping = Long.MaxValue))
-
-      } else node
+      }
+      else node
     }.getOrElse(node)
 
   @deprecated(message = "Will be made private", since = "0.11.10")
