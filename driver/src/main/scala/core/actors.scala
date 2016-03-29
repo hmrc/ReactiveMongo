@@ -221,6 +221,7 @@ trait MongoDBSystem extends Actor {
   private def unauthenticate(node: Node, connections: Vector[Connection]): Node = node.copy(
     status = NodeStatus.Unknown,
     connections = connections,
+    pingInfo = node.pingInfo.copy(lastIsMasterId = -1),
     authenticated = if (connections.isEmpty) Set.empty else node.authenticated)
 
   private def stopWhenDisconnected[T](state: String, msg: T): Unit = {
