@@ -817,8 +817,19 @@ trait MongoDBSystem extends Actor {
             lastIsMasterId = id))
       }
       else if (System.currentTimeMillis() - node.pingInfo.lastIsMasterTime >= PingInfo.pingTimeout) {
-          logger.debug(s"Haven't heard from ${node.toShortString} in a while... hope it's all cool")
-          node
+        logger.debug(s"Haven't heard from ${node.toShortString} in a while... assuming it's down")
+
+        val channelIds = node.connections.map { c => c.channel.getId }
+        awaitingResponses.retain { (_, awaitingResponse) =>
+          if (channelIds contains awaitingResponse.channelID) {
+            logger.debug(s"completing promise ${awaitingResponse.promise} with error='primary timed out'")
+            awaitingResponse.promise.failure(GenericDriverException("primary timed out"))
+            false
+          }
+          else true
+        }
+
+        unauthenticate(node, Vector.empty[Connection])
       }
       else if (node.pingInfo.lastIsMasterId >= PingInfo.pingTimeout) {
         node.copy(
