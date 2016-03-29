@@ -820,7 +820,7 @@ trait MongoDBSystem extends Actor {
       else if (node.status != NodeStatus.Unknown && System.currentTimeMillis() - node.pingInfo.lastIsMasterTime >= PingInfo.pingTimeout) {
         logger.debug(s"Haven't heard from ${node.toShortString} in a while... assuming it's down")
 
-        val channelIds = node.connections.map { c => c.channel.getId }
+        val channelIds = node.connections.map { _.channel.getId }
         awaitingResponses.retain { (_, awaitingResponse) =>
           if (channelIds contains awaitingResponse.channelID) {
             logger.debug(s"completing promise ${awaitingResponse.promise} with error='node timed out - ${node.toShortString}'")
