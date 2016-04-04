@@ -162,6 +162,7 @@ object Dependencies {
   val netty = "io.netty" % "netty" % "3.10.4.Final" cross CrossVersion.Disabled
 
   val akkaActor = "com.typesafe.akka" %% "akka-actor" % "2.3.6"
+  val akkaTestkit = "com.typesafe.akka" %% "akka-testkit" % "2.3.6"
 
   val playIteratees = "com.typesafe.play" %% "play-iteratees" % "2.3.10"
 
@@ -211,6 +212,7 @@ object ReactiveMongoBuild extends Build {
       libraryDependencies ++= Seq(
         netty,
         akkaActor,
+        akkaTestkit,
         playIteratees,
         commonsCodec,
         shapelessTest,
