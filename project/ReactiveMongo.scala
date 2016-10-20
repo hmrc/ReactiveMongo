@@ -163,7 +163,7 @@ object Dependencies {
 
   val akkaActor = "com.typesafe.akka" %% "akka-actor" % "2.3.6"
 
-  val playIteratees = "com.typesafe.play" %% "play-iteratees" % "2.3.10"
+  val playIteratees = "com.typesafe.play" %% "play-iteratees" % "2.5.8"
 
   val specs = "org.specs2" %% "specs2-core" % "3.7.2" % Test
 
