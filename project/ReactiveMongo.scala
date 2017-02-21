@@ -6,7 +6,7 @@ import uk.gov.hmrc.gitstamp.GitStamp._
 import scala.language.postfixOps
 
 object BuildSettings {
-  val buildVersion = "0.12.1"
+  val buildVersion = "0.12.2"
 
   val filter = { (ms: Seq[(File, String)]) =>
     ms filter {
