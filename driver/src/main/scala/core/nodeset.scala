@@ -506,6 +506,9 @@ object Authenticating {
       case ScramSha1Authenticating(db, user, pass, _, _, _, _, _) =>
         Some((db, user, pass))
 
+      case X509Authenticating(db, user) =>
+        Some((db, user, ""))
+
       case _ =>
         None
     }
@@ -514,6 +517,13 @@ object Authenticating {
 case class CrAuthenticating(db: String, user: String, password: String, nonce: Option[String]) extends Authenticating {
   override def toString: String =
     s"Authenticating($db, $user, ${nonce.map(_ => "<nonce>").getOrElse("<>")})"
+}
+
+case class X509Authenticating(db: String, user: String) extends Authenticating {
+  override def toString: String =
+    s"Authenticating($db, $user)"
+
+  override def password: String = ???
 }
 
 case class ScramSha1Authenticating(

@@ -2,17 +2,17 @@ package reactivemongo.core.actors
 
 import scala.concurrent.{ Future, Promise }
 
-import reactivemongo.core.commands.{
-  FailedAuthentication,
-  SuccessfulAuthentication
-}
-
-import reactivemongo.core.protocol.Response
+import reactivemongo.api.BSONSerializationPack
+import reactivemongo.bson.{ BSONDocument, DefaultBSONHandlers }
+import reactivemongo.core.commands.{ FailedAuthentication, SuccessfulAuthentication }
+import reactivemongo.core.netty.{ BufferSequence, ChannelBufferWritableBuffer }
+import reactivemongo.core.protocol.{ Query, QueryFlags, RequestMaker, Response }
 import reactivemongo.core.nodeset.{
   Authenticate,
   CrAuthenticating,
   Connection,
-  ScramSha1Authenticating
+  ScramSha1Authenticating,
+  X509Authenticating
 }
 
 private[reactivemongo] trait MongoCrAuthentication { system: MongoDBSystem =>
@@ -70,16 +70,9 @@ private[reactivemongo] trait MongoCrAuthentication { system: MongoDBSystem =>
 private[reactivemongo] trait MongoScramSha1Authentication {
   system: MongoDBSystem =>
 
-  import org.apache.commons.codec.binary.Base64
   import MongoDBSystem.logger
-  import reactivemongo.core.commands.{
-    CommandError,
-    ScramSha1Initiate,
-    ScramSha1Negociation,
-    ScramSha1FinalNegociation,
-    ScramSha1StartNegociation,
-    SuccessfulAuthentication
-  }
+  import org.apache.commons.codec.binary.Base64
+  import reactivemongo.core.commands.{ CommandError, ScramSha1FinalNegociation, ScramSha1Initiate, ScramSha1Negociation, ScramSha1StartNegociation, SuccessfulAuthentication }
 
   protected final def sendAuthenticate(connection: Connection, nextAuth: Authenticate): Connection = {
     val start = ScramSha1Initiate(nextAuth.user)
@@ -197,6 +190,79 @@ private[reactivemongo] trait MongoScramSha1Authentication {
 
       ()
     }
+  }
+}
+
+//private[reactivemongo] trait MongoX509Authentication { system: MongoDBSystem =>
+//  import MongoDBSystem.logger
+//
+//  protected final def sendAuthenticate(connection: Connection, nextAuth: Authenticate): Connection = {
+//
+//    logger.warn("********* Authorizing on Mongo")
+//
+//    val authDocument = BSONDocument(
+//      "authenticate" -> 1,
+//      "mechanism" -> "MONGODB-X509"
+//    )
+//
+//    val buffer = ChannelBufferWritableBuffer()
+//    BSONSerializationPack.serializeAndWrite(buffer, authDocument, DefaultBSONHandlers.BSONDocumentIdentity)
+//
+//    val bs = BufferSequence(buffer.buffer)
+//
+//    val request = RequestMaker(Query(QueryFlags.AwaitData, "$external", 0, 1), bs)
+//
+//    connection.send(request.apply(RequestId.authenticate.next))
+//    connection.copy(authenticating = Some(
+//      X509Authenticating(nextAuth.db, nextAuth.user)
+//    ))
+//  }
+//
+//  final def initialAuth(connection: Connection): Connection = {
+//
+//    logger.warn("********* Authorizing on Mongo")
+//
+//    val authDocument = BSONDocument(
+//      "authenticate" -> 1,
+//      "mechanism" -> "MONGODB-X509"
+//    )
+//
+//    val buffer = ChannelBufferWritableBuffer()
+//    BSONSerializationPack.serializeAndWrite(buffer, authDocument, DefaultBSONHandlers.BSONDocumentIdentity)
+//
+//    val bs = BufferSequence(buffer.buffer)
+//
+//    val request = RequestMaker(Query(QueryFlags.AwaitData, "$external", 0, 1), bs)
+//
+//    connection.send(request.apply(RequestId.authenticate.next))
+//    connection
+//  }
+//
+//  protected val authReceive: Receive = {
+//    case _: Response => {
+//      logger.warn("challenge received for a x509 auth, nothing to do here")
+//      ()
+//    }
+//  }
+//}
+
+private[reactivemongo] trait MongoX509Authentication { system: MongoDBSystem =>
+  import reactivemongo.core.commands.{ X509Authenticate }
+  import reactivemongo.core.nodeset.X509Authenticating
+  import MongoDBSystem.logger
+
+  protected final def sendAuthenticate(connection: Connection, nextAuth: Authenticate): Connection = {
+    connection.send(X509Authenticate(nextAuth.user)("$external").maker(RequestId.authenticate.next))
+
+    connection.copy(authenticating = Some(
+      X509Authenticating(nextAuth.db, nextAuth.user)
+    ))
+  }
+
+  protected val authReceive: Receive = {
+    case response: Response if RequestId.authenticate accepts response =>
+      logger.debug(s"AUTH: got authenticated response! ${response.info.channelId}")
+      authenticationResponse(response)(X509Authenticate.parseResponse(_))
   }
 }
 

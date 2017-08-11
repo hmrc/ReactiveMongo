@@ -1,3 +1,5 @@
+import reactivemongo.api.X509Authentication
+
 object Common {
   import scala.concurrent.{ Await, ExecutionContext }
   import scala.concurrent.duration._
@@ -20,7 +22,7 @@ object Common {
       a.copy(sslEnabled = true, sslAllowsInvalidCert = true)
     } else a
 
-    crMode.fold(b) { mode => b.copy(authMode = mode) }
+    crMode.fold(b) { mode => b.copy(authMode = mode) }.copy(authMode = X509Authentication)
   }
 
   val primaryHost =
@@ -30,7 +32,7 @@ object Common {
     flatMap(r => scala.util.Try(r.toInt).toOption).getOrElse(7)
 
   lazy val driver = new MongoDriver
-  lazy val connection = driver.connection(List(primaryHost), DefaultOptions)
+  lazy val connection = driver.connection(List(primaryHost), DefaultOptions.copy(authMode = X509Authentication))
 
   val failoverStrategy = FailoverStrategy(retries = failoverRetries)
 

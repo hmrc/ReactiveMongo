@@ -17,7 +17,8 @@ import reactivemongo.core.actors.{
   Close,
   LegacyDBSystem,
   MongoDBSystem,
-  StandardDBSystem
+  StandardDBSystem,
+  X509DBSystem
 }
 import reactivemongo.core.nodeset.Authenticate
 import reactivemongo.util.LazyLogger
@@ -141,13 +142,23 @@ class MongoDriver(
 
     // TODO: Passing ref to MongoDBSystem.history to AddConnection
     lazy val dbsystem: MongoDBSystem = options.authMode match {
-      case CrAuthentication => new LegacyDBSystem(
-        supervisorName, nm, nodes, authentications, options
-      )
+      case CrAuthentication =>
+        logger.warn("********** boooooooooooo")
+        new LegacyDBSystem(
+          supervisorName, nm, nodes, authentications, options
+        )
 
-      case _ => new StandardDBSystem(
-        supervisorName, nm, nodes, authentications, options
-      )
+      case X509Authentication =>
+        logger.warn("********** yaaaaaaaaay")
+        new X509DBSystem(
+          supervisorName, nm, nodes, authentications, options
+        )
+
+      case _ =>
+        logger.warn("********** pooooooooooooooo")
+        new StandardDBSystem(
+          supervisorName, nm, nodes, authentications, options
+        )
     }
 
     val mongosystem = system.actorOf(Props(dbsystem), nm)
@@ -165,6 +176,7 @@ class MongoDriver(
       c.history = () => dbsystem.internalState
       c
     }, Duration.Inf)
+
     // TODO: Returns Future[MongoConnection]
   }
 

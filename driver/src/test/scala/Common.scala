@@ -4,7 +4,8 @@ import reactivemongo.api.{
   CrAuthentication,
   FailoverStrategy,
   MongoDriver,
-  MongoConnectionOptions
+  MongoConnectionOptions,
+  X509Authentication
 }
 
 object Common {
@@ -46,10 +47,10 @@ object Common {
       } else a
     }
 
-    crMode.fold(b) { mode => b.copy(authMode = mode) }
+    crMode.fold(b) { mode => b.copy(authMode = mode) }.copy(authMode = X509Authentication)
   }
 
-  lazy val connection = driver.connection(List(primaryHost), DefaultOptions)
+  lazy val connection = driver.connection(List(primaryHost), DefaultOptions.copy(sslEnabled = true, sslAllowsInvalidCert = true, authMode = X509Authentication))
 
   private val timeoutFactor = 1.25D
   def estTimeout(fos: FailoverStrategy): FiniteDuration =
@@ -128,7 +129,7 @@ object Common {
     proxy
   }
 
-  lazy val slowConnection = driver.connection(List(slowPrimary), SlowOptions)
+  lazy val slowConnection = driver.connection(List(slowPrimary), SlowOptions.copy(sslEnabled = true, sslAllowsInvalidCert = true, authMode = X509Authentication))
 
   lazy val (db, slowDb) = {
     import ExecutionContext.Implicits.global

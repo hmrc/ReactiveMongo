@@ -295,6 +295,7 @@ trait MongoDBSystem extends Actor {
 
   @annotation.tailrec
   protected final def authenticateConnection(connection: Connection, auths: Seq[Authenticate]): Connection = {
+    logger.warn("************ initial authentication of connection")
     if (!connection.authenticating.isEmpty) connection
     else auths.headOption match {
       case Some(nextAuth) =>
@@ -1306,6 +1307,22 @@ final class LegacyDBSystem private[reactivemongo] (
     val initialAuthenticates: Seq[Authenticate],
     val options: MongoConnectionOptions
 ) extends MongoDBSystem with MongoCrAuthentication {
+
+  def newChannelFactory(effect: Unit): ChannelFactory =
+    new ChannelFactory(supervisor, name, options)
+
+  @deprecated("Initialize with an explicit supervisor and connection names", "0.11.14")
+  def this(s: Seq[String], a: Seq[Authenticate], opts: MongoConnectionOptions) = this(s"unknown-${System identityHashCode opts}", s"unknown-${System identityHashCode opts}", s, a, opts)
+}
+
+@deprecated("Internal class: will be made private", "0.11.14")
+final class X509DBSystem private[reactivemongo] (
+    val supervisor: String,
+    val name: String,
+    val seeds: Seq[String],
+    val initialAuthenticates: Seq[Authenticate],
+    val options: MongoConnectionOptions
+) extends MongoDBSystem with MongoX509Authentication {
 
   def newChannelFactory(effect: Unit): ChannelFactory =
     new ChannelFactory(supervisor, name, options)
