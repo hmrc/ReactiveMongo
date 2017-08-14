@@ -16,9 +16,9 @@
  */
 import org.specs2.mutable._
 import reactivemongo.bson._
-import scala.util._
 
 class Types extends Specification {
+  "BSON types" title
 
   "Generating BSONObjectID" should {
     "not throw a SocketException" in {
@@ -30,7 +30,7 @@ class Types extends Specification {
        *   ip -6 addr add 2001:DB8::`printf %04x $i`/128 dev tun$i
        * done
        */
-      BSONObjectID.generate must beAnInstanceOf[BSONObjectID]
+      BSONObjectID.generate() must beAnInstanceOf[BSONObjectID]
     }
   }
 
@@ -39,12 +39,15 @@ class Types extends Specification {
       BSONDocument().elements must beEmpty and (
         BSONDocument.empty.elements must beEmpty) and (
           document.elements must beEmpty) and (
-            document().elements must beEmpty)
+            document().elements must beEmpty) and (
+              BSONDocument.empty.contains("foo") must beFalse)
     }
 
     "be created with a new element " in {
-      val doc = BSONDocument.empty ++ ("foo" -> 1)
-      doc must_== BSONDocument("foo" -> 1)
+      val doc = BSONDocument.empty :~ ("foo" -> 1)
+
+      doc must_== BSONDocument("foo" -> 1) and (
+        doc.contains("foo") must beTrue)
     }
 
     "remove specified elements" in {
@@ -55,7 +58,7 @@ class Types extends Specification {
     }
   }
 
-  "BSON array" should {
+  "BSONArray" should {
     "be empty" in {
       BSONArray().values must beEmpty and (
         BSONArray.empty.values must beEmpty) and (
@@ -68,6 +71,10 @@ class Types extends Specification {
       val arr = BSONArray.empty ++ ("foo", "bar")
       arr must_== BSONArray("foo", "bar")
     }
+
+    "be returned with a prepended element" in {
+      BSONString("bar") +: BSONArray("foo") must_== BSONArray("bar", "foo")
+    }
   }
 
   "BSONBinary" should {
@@ -75,7 +82,8 @@ class Types extends Specification {
       val bytes = Array[Byte](1, 2, 3)
       val bson = BSONBinary(bytes, Subtype.GenericBinarySubtype)
 
-      bson.byteArray must_== bytes
+      bson.byteArray aka "read #1" must_== bytes and (
+        bson.byteArray aka "read #2" must_== bytes)
     }
   }
 
@@ -86,6 +94,10 @@ class Types extends Specification {
       ts.value aka "raw value" must_== 6065270725701271558L and (
         ts.time aka "time" must_== 1412180887L) and (
           ts.ordinal aka "ordinal" must_== 6)
+    }
+
+    "be created from the time and ordinal values" in {
+      BSONTimestamp(1412180887L, 6) must_== BSONTimestamp(6065270725701271558L)
     }
   }
 }

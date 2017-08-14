@@ -1,10 +1,6 @@
 package reactivemongo.api.commands
 
-import scala.util.control.NoStackTrace
-
-import reactivemongo.bson.{ BSONObjectID, BSONValue }
-import reactivemongo.core.errors.DatabaseException
-import reactivemongo.api.{ Cursor, SerializationPack }
+import reactivemongo.api.SerializationPack
 
 trait Mongo26WriteCommand
 
@@ -19,119 +15,37 @@ case class GetLastError(
     with CommandWithResult[LastError]
 
 object GetLastError {
+  import scala.language.implicitConversions
+
   sealed trait W
   case object Majority extends W
   case class TagSet(tag: String) extends W
+  @deprecated(message = "Use `WaitForAcknowledgments`", since = "0.12.4")
   case class WaitForAknowledgments(i: Int) extends W
+  case class WaitForAcknowledgments(i: Int) extends W
   object W {
     implicit def strToTagSet(s: String): W = TagSet(s)
-    implicit def intToWaitForAknowledgments(i: Int): W = WaitForAknowledgments(i)
+    @deprecated(message = "Use `intToWaitForAcknowledgments`", since = "0.12.4")
+    implicit def intToWaitForAknowledgments(i: Int): W =
+      WaitForAknowledgments(i)
+    implicit def intToWaitForAcknowledgments(i: Int): W =
+      WaitForAcknowledgments(i)
   }
 
   val Unacknowledged: GetLastError =
-    GetLastError(WaitForAknowledgments(0), false, false, None)
+    GetLastError(WaitForAcknowledgments(0), false, false, None)
 
   val Acknowledged: GetLastError =
-    GetLastError(WaitForAknowledgments(1), false, false, None)
+    GetLastError(WaitForAcknowledgments(1), false, false, None)
 
   val Journaled: GetLastError =
-    GetLastError(WaitForAknowledgments(1), true, false, None)
+    GetLastError(WaitForAcknowledgments(1), true, false, None)
 
-  def ReplicaAcknowledged(n: Int, timeout: Int, journaled: Boolean): GetLastError = GetLastError(WaitForAknowledgments(if (n < 2) 2 else n), journaled, false, (if (timeout <= 0) None else Some(timeout)))
+  def ReplicaAcknowledged(n: Int, timeout: Int, journaled: Boolean): GetLastError = GetLastError(WaitForAcknowledgments(if (n < 2) 2 else n), journaled, false, (if (timeout <= 0) None else Some(timeout)))
 
   def TagReplicaAcknowledged(tag: String, timeout: Int, journaled: Boolean): GetLastError = GetLastError(TagSet(tag), journaled, false, (if (timeout <= 0) None else Some(timeout)))
 
   def Default: GetLastError = Acknowledged
-}
-
-case class LastError(
-    ok: Boolean,
-    err: Option[String],
-    code: Option[Int],
-    lastOp: Option[Long],
-    n: Int,
-    singleShard: Option[String], // string?
-    updatedExisting: Boolean,
-    upserted: Option[BSONValue],
-    wnote: Option[WriteConcern.W],
-    wtimeout: Boolean,
-    waited: Option[Int],
-    wtime: Option[Int]) extends WriteResult {
-  def writeErrors: Seq[WriteError] = Seq.empty
-  def writeConcernError: Option[WriteConcernError] = None
-  def errmsg = err
-
-  override def inError: Boolean = !ok || err.isDefined
-  //def stringify: String = toString + " [inError: " + inError + "]"
-}
-
-sealed trait WriteResult extends DatabaseException with NoStackTrace {
-  def ok: Boolean
-  def n: Int
-  def writeErrors: Seq[WriteError]
-  def writeConcernError: Option[WriteConcernError]
-  def code: Option[Int]
-  def errmsg: Option[String]
-
-  def hasErrors: Boolean = !writeErrors.isEmpty || !writeConcernError.isEmpty
-  def inError: Boolean = !ok || code.isDefined
-  def message = errmsg.getOrElse("<none>")
-  override def originalDocument = None // TODO
-  //def stringify: String = toString + " [inError: " + inError + "]"
-  //override def getMessage() = toString + " [inError: " + inError + "]"
-}
-
-case class WriteError(
-  index: Int,
-  code: Int,
-  errmsg: String)
-
-case class WriteConcernError(
-  code: Int,
-  errmsg: String)
-
-case class DefaultWriteResult(
-    ok: Boolean,
-    n: Int,
-    writeErrors: Seq[WriteError],
-    writeConcernError: Option[WriteConcernError],
-    code: Option[Int],
-    errmsg: Option[String]) extends WriteResult {
-  def flatten =
-    if (!writeErrors.isEmpty)
-      DefaultWriteResult(
-        ok = false,
-        n = n,
-        writeErrors = writeErrors,
-        writeConcernError = writeConcernError,
-        code = code.orElse(Some(writeErrors.head.code)),
-        errmsg = errmsg.orElse(Some(writeErrors.head.errmsg)))
-    else this
-}
-
-case class Upserted(index: Int, _id: BSONValue)
-
-case class UpdateWriteResult(
-    ok: Boolean,
-    n: Int,
-    nModified: Int,
-    upserted: Seq[Upserted],
-    writeErrors: Seq[WriteError],
-    writeConcernError: Option[WriteConcernError],
-    code: Option[Int],
-    errmsg: Option[String]) extends WriteResult {
-  def flatten = if (!writeErrors.isEmpty) {
-    UpdateWriteResult(
-      ok = false,
-      n = n,
-      nModified = nModified,
-      upserted = upserted,
-      writeErrors = writeErrors,
-      writeConcernError = writeConcernError,
-      code = code.orElse(Some(writeErrors.head.code)),
-      errmsg = errmsg.orElse(Some(writeErrors.head.errmsg)))
-  }
-  else this
 }
 
 object MultiBulkWriteResult {

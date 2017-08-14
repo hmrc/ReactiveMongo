@@ -2,9 +2,19 @@ package reactivemongo.api.commands
 
 object DropDatabase extends Command with CommandWithResult[UnitBox.type]
 
+@deprecated("Use [[DropCollection]]", "0.12.0")
 object Drop extends CollectionCommand with CommandWithResult[UnitBox.type]
 
-object EmptyCapped extends CollectionCommand with CommandWithResult[UnitBox.type]
+/**
+ * @param dropped true if the collection existed and was dropped
+ */
+case class DropCollectionResult(dropped: Boolean)
+
+object DropCollection extends CollectionCommand
+  with CommandWithResult[DropCollectionResult]
+
+object EmptyCapped extends CollectionCommand
+  with CommandWithResult[UnitBox.type]
 
 case class RenameCollection(
   fullyQualifiedCollectionName: String,
@@ -43,23 +53,50 @@ case class CollStats(scale: Option[Int] = None) extends CollectionCommand with C
  * @param indexSizes Size of specific indexes in bytes.
  * @param capped States if this collection is capped.
  * @param max The maximum number of documents of this collection, if capped.
+ * @param maxSize The maximum size in bytes (or in bytes / scale, if any) of this collection, if capped.
  */
 case class CollStatsResult(
-  ns: String,
-  count: Int,
-  size: Double,
-  averageObjectSize: Option[Double],
-  storageSize: Double,
-  numExtents: Option[Int],
-  nindexes: Int,
-  lastExtentSize: Option[Int],
-  paddingFactor: Option[Double],
-  systemFlags: Option[Int],
-  userFlags: Option[Int],
-  totalIndexSize: Int,
-  indexSizes: Array[(String, Int)],
-  capped: Boolean,
-  max: Option[Long])
+    ns: String,
+    count: Int,
+    size: Double,
+    averageObjectSize: Option[Double],
+    storageSize: Double,
+    numExtents: Option[Int],
+    nindexes: Int,
+    lastExtentSize: Option[Int],
+    paddingFactor: Option[Double],
+    systemFlags: Option[Int],
+    userFlags: Option[Int],
+    totalIndexSize: Int,
+    sizePerIndex: List[(String, Int)],
+    capped: Boolean,
+    max: Option[Long],
+    maxSize: Option[Double] = None) {
+  @inline def indexSizes: Array[(String, Int)] = sizePerIndex.toArray
+
+  @deprecated(message = "Use [[copy]] with [[maxSize]]", since = "0.11.10")
+  def copy(
+    ns: String = this.ns,
+    count: Int = this.count,
+    size: Double = this.size,
+    averageObjectSize: Option[Double] = this.averageObjectSize,
+    storageSize: Double = this.storageSize,
+    numExtents: Option[Int] = this.numExtents,
+    nindexes: Int = this.nindexes,
+    lastExtentSize: Option[Int] = this.lastExtentSize,
+    paddingFactor: Option[Double] = this.paddingFactor,
+    systemFlags: Option[Int] = this.systemFlags,
+    userFlags: Option[Int] = this.userFlags,
+    totalIndexSize: Int = this.totalIndexSize,
+    indexSizes: Array[(String, Int)] = this.sizePerIndex.toArray,
+    capped: Boolean = this.capped,
+    max: Option[Long] = this.max): CollStatsResult = CollStatsResult(
+    ns, count, size, averageObjectSize, storageSize, numExtents, nindexes,
+    lastExtentSize, paddingFactor, systemFlags, userFlags, totalIndexSize,
+    indexSizes.toList, capped, max)
+
+  override def toString = s"""CollStatsResult($ns, capped = $capped, count = $count, size = $size, avgObjSize = $averageObjectSize, storageSize = $storageSize, numExtents = $numExtents, nindexes = $nindexes, lastExtentSize = $lastExtentSize, paddingFactor = $paddingFactor, systemFlags = $systemFlags, userFlags = $userFlags, sizePerIndex = ${sizePerIndex.mkString("[ ", ", ", " ]")}, max = $max)"""
+}
 
 case class DropIndexes(index: String) extends CollectionCommand with CommandWithResult[DropIndexesResult]
 
@@ -68,7 +105,8 @@ case class DropIndexesResult(value: Int) extends BoxedAnyVal[Int]
 case class CollectionNames(names: List[String])
 
 /** List the names of DB collections. */
-object ListCollectionNames extends Command with CommandWithResult[CollectionNames]
+object ListCollectionNames
+  extends Command with CommandWithResult[CollectionNames]
 
 import reactivemongo.api.indexes.Index
 
@@ -115,8 +153,8 @@ case class ReplSetMember(
   stateStr: String,
   uptime: Long,
   optime: Long,
-  lastHeartbeat: Long,
-  lastHeartbeatRecv: Long,
+  lastHeartbeat: Option[Long],
+  lastHeartbeatRecv: Option[Long],
   lastHeartbeatMessage: Option[String],
   electionTime: Option[Long],
   self: Boolean,
@@ -139,12 +177,21 @@ case class ReplSetStatus(
   members: List[ReplSetMember])
 
 /**
- * The command [[[[http://docs.mongodb.org/manual/reference/command/replSetGetStatus/ replSetGetStatus]]
+ * The command [[http://docs.mongodb.org/manual/reference/command/replSetGetStatus/ replSetGetStatus]]
  */
 case object ReplSetGetStatus
   extends Command with CommandWithResult[ReplSetStatus]
 
 sealed trait ServerProcess
+
+object ServerProcess {
+  def unapply(repr: String): Option[ServerProcess] = repr match {
+    case "mongos" => Some(MongosProcess)
+    case "mongod" => Some(MongodProcess)
+    case _        => None
+  }
+}
+
 case object MongodProcess extends ServerProcess {
   override val toString = "mongod"
 }
@@ -152,16 +199,70 @@ case object MongosProcess extends ServerProcess {
   override val toString = "mongos"
 }
 
-case class ServerStatusResult(
-  host: String,
-  version: String,
-  process: ServerProcess,
-  pid: Long,
-  uptime: Long,
-  uptimeMillis: Long,
-  uptimeEstimate: Long,
-  localTime: Long)
+object ResyncResult extends BoxedAnyVal[Unit] {
+  val value = {}
+}
 
-/** Server [[http://docs.mongodb.org/manual/reference/server-status/ status]] */
-case object ServerStatus
-  extends Command with CommandWithResult[ServerStatusResult]
+/**
+ * The command [[https://docs.mongodb.org/manual/reference/command/resync/ resync]]
+ */
+object Resync extends Command with CommandWithResult[ResyncResult.type]
+
+/**
+ * The [[https://docs.mongodb.org/manual/reference/command/replSetMaintenance/ replSetMaintenance]] command.
+ * It must be executed against the `admin` database.
+ *
+ * @param enable if true the the member enters the `RECOVERING` state
+ */
+case class ReplSetMaintenance(enable: Boolean = true) extends Command
+  with CommandWithResult[UnitBox.type]
+
+import reactivemongo.api.SerializationPack
+
+/**
+ * @param name the name of user role
+ */
+class UserRole(val name: String)
+
+/**
+ * @param db the name of the database
+ */
+case class DBUserRole(
+  override val name: String,
+  db: String) extends UserRole(name)
+
+/** User role extractor */
+object UserRole {
+  def apply(name: String): UserRole = new UserRole(name)
+  def unapply(role: UserRole): Option[String] = Some(role.name)
+}
+
+trait CreateUserCommand[P <: SerializationPack]
+    extends ImplicitCommandHelpers[P] {
+
+  /**
+   * The [[https://docs.mongodb.com/manual/reference/command/createUser/ createUser]] command.
+   *
+   * @param name the name of the user to be created
+   * @param pwd the user password (not required if the database uses external credentials)
+   * @param roles the roles granted to the user, possibly an empty to create users without roles
+   * @param digestPassword when true, the mongod instance will create the hash of the user password (default: `true`)
+   * @param writeConcern the optional level of [[https://docs.mongodb.com/manual/reference/write-concern/ write concern]]
+   * @param customData the custom data to associate with the user account
+   */
+  case class CreateUser(
+    name: String,
+    pwd: Option[String],
+    roles: List[UserRole],
+    digestPassword: Boolean = true,
+    writeConcern: Option[WriteConcern] = None,
+    customData: Option[pack.Document] = None) extends Command with CommandWithPack[P]
+      with CommandWithResult[UnitBox.type]
+
+}
+
+/**
+ * The [[https://docs.mongodb.com/manual/reference/command/ping/ ping]] command.
+ */
+case object PingCommand extends Command with CommandWithResult[Boolean]
+

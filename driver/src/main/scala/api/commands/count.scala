@@ -1,6 +1,8 @@
 package reactivemongo.api.commands
 
-import reactivemongo.api.{ BSONSerializationPack, Cursor, SerializationPack }
+import reactivemongo.api.SerializationPack
+
+import scala.language.implicitConversions
 
 trait CountCommand[P <: SerializationPack] extends ImplicitCommandHelpers[P] {
   case class Count(

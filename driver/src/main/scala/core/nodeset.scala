@@ -1,16 +1,26 @@
 package reactivemongo.core.nodeset
 
-import java.util.concurrent.{ Executor, Executors }
+import scala.language.higherKinds
+
+import java.util.concurrent.{ TimeUnit, Executor, Executors }
 
 import scala.collection.generic.CanBuildFrom
+import scala.collection.immutable.Set
 
-import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory
-import org.jboss.netty.buffer.HeapChannelBufferFactory
-import org.jboss.netty.channel.{ Channel, ChannelPipeline, Channels }
+import shaded.netty.util.HashedWheelTimer
+import shaded.netty.buffer.HeapChannelBufferFactory
+import shaded.netty.channel.socket.nio.NioClientSocketChannelFactory
+import shaded.netty.channel.{
+  Channel,
+  ChannelFuture,
+  ChannelPipeline,
+  Channels
+}
+import shaded.netty.handler.timeout.IdleStateHandler
 
 import akka.actor.ActorRef
 
-import reactivemongo.utils.LazyLogger
+import reactivemongo.util.LazyLogger
 import reactivemongo.core.protocol.Request
 
 import reactivemongo.bson.BSONDocument
@@ -26,17 +36,7 @@ import reactivemongo.api.{ MongoConnectionOptions, ReadPreference }
 package object utils {
   def updateFirst[A, M[T] <: Iterable[T]](coll: M[A])(f: A => Option[A])(implicit cbf: CanBuildFrom[M[_], A, M[A]]): M[A] = {
     val builder = cbf.apply
-    def run(iterator: Iterator[A]): Unit = {
-      while (iterator.hasNext) {
-        val e = iterator.next
-        val updated = f(e)
-        if (updated.isDefined) {
-          builder += updated.get
-          builder ++= iterator
-        }
-        else builder += e
-      }
-    }
+
     builder.result
   }
 
@@ -44,26 +44,44 @@ package object utils {
     val builder = cbf.apply
     val (head, tail) = coll.span(!f.isDefinedAt(_))
     builder ++= head
+
     if (!tail.isEmpty) {
       builder += f(tail.head)
       builder ++= tail.drop(1)
     }
+
     builder.result -> !tail.isEmpty
   }
 }
 
+@SerialVersionUID(527078726L)
 case class NodeSet(
     name: Option[String],
     version: Option[Long],
     nodes: Vector[Node],
-    authenticates: Set[Authenticate]) {
-  val mongos: Option[Node] = nodes.find(_.isMongos)
+    @transient authenticates: Set[Authenticate]) {
+
+  /** The node which is the current primary one. */
   val primary: Option[Node] = nodes.find(_.status == NodeStatus.Primary)
-  val secondaries = new RoundRobiner(nodes.filter(_.status == NodeStatus.Secondary))
+
+  /** The `mongos` node, if any. */
+  val mongos: Option[Node] = nodes.find(_.isMongos)
+
+  @transient val secondaries = new RoundRobiner(
+    nodes.filter(_.status == NodeStatus.Secondary))
+
   val queryable = secondaries.subject ++ primary
-  val nearestGroup = new RoundRobiner(queryable.sortWith { _.pingInfo.ping < _.pingInfo.ping })
+
+  /** See the [[https://docs.mongodb.com/manual/reference/read-preference/#nearest nearest]] read preference. */
+  @transient val nearestGroup = new RoundRobiner(
+    queryable.sortWith { _.pingInfo.ping < _.pingInfo.ping })
+
+  /** The first node from the [[nearestGroup]]. */
   val nearest = nearestGroup.subject.headOption
-  val protocolMetadata = primary.orElse(secondaries.subject.headOption).map(_.protocolMetadata).getOrElse(ProtocolMetadata.Default)
+
+  val protocolMetadata: ProtocolMetadata =
+    primary.orElse(secondaries.subject.headOption).
+      fold(ProtocolMetadata.Default)(_.protocolMetadata)
 
   def primary(authenticated: Authenticated): Option[Node] =
     primary.filter(_.authenticated.exists(_ == authenticated))
@@ -79,7 +97,7 @@ case class NodeSet(
   def updateOrAddNodes(f: PartialFunction[Node, Node], nodes: Seq[Node]) =
     nodes.foldLeft(this)(_.updateOrAddNode(f, _))
 
-  def updateAll(f: Node => Node) = copy(nodes = nodes.map(f))
+  def updateAll(f: Node => Node): NodeSet = copy(nodes = nodes.map(f))
 
   def updateNodeByChannelId(id: Int)(f: Node => Node) =
     updateByChannelId(id)(identity)(f)
@@ -87,16 +105,14 @@ case class NodeSet(
   def updateConnectionByChannelId(id: Int)(f: Connection => Connection) =
     updateByChannelId(id)(f)(identity)
 
-  def updateByChannelId(id: Int)(fc: Connection => Connection)(fn: Node => Node) = {
-    copy(nodes = nodes.map { node =>
-      val (connections, updated) = utils.update(node.connections) {
-        case conn if (conn.channel.getId == id) => fc(conn)
-      }
+  def updateByChannelId(id: Int)(fc: Connection => Connection)(fn: Node => Node) = copy(nodes = nodes.map { node =>
+    val (connections, updated) = utils.update(node.connections) {
+      case conn if (conn.channel.getId == id) => fc(conn)
+    }
 
-      if (updated) fn(node.copy(connections = connections))
-      else node
-    })
-  }
+    if (updated) fn(node._copy(connections = connections))
+    else node
+  })
 
   def pickByChannelId(id: Int): Option[(Node, Connection)] =
     nodes.view.map(node =>
@@ -105,13 +121,19 @@ case class NodeSet(
         con.status == ConnectionStatus.Connected) => node -> con
     }
 
-  def pickForWrite: Option[(Node, Connection)] =
-    primary.view.map(node => node -> node.authenticatedConnections.subject.headOption).collectFirst {
-      case (node, Some(connection)) => node -> connection
-    }
+  @deprecated(message = "Unused", since = "0.12-RC0")
+  def pickForWrite: Option[(Node, Connection)] = primary.view.map(node =>
+    node -> node.authenticatedConnections.subject.headOption).collectFirst {
+    case (node, Some(connection)) => node -> connection
+  }
 
-  private val pickConnectionAndFlatten: Option[Node] => Option[(Node, Connection)] = _.map(node => node -> node.authenticatedConnections.pick).collect {
-    case (node, Some(connection)) => (node, connection)
+  private val pickConnectionAndFlatten: Option[Node] => Option[(Node, Connection)] = {
+    val p: RoundRobiner[Connection, Vector] => Option[Connection] =
+      if (authenticates.isEmpty) _.pick
+      else _.pickWithFilter(c =>
+        !c.authenticating.isDefined && !c.authenticated.isEmpty)
+
+    _.flatMap(node => p(node.authenticatedConnections).map(node -> _))
   }
 
   private def pickFromGroupWithFilter(roundRobiner: RoundRobiner[Node, Vector], filter: Option[BSONDocument => Boolean], fallback: => Option[Node]) =
@@ -124,32 +146,90 @@ case class NodeSet(
       pickConnectionAndFlatten(mongos)
     }
     else preference match {
-      case ReadPreference.Primary                    => pickConnectionAndFlatten(primary)
-      case ReadPreference.PrimaryPreferred(filter)   => pickConnectionAndFlatten(primary.orElse(pickFromGroupWithFilter(secondaries, filter, secondaries.pick)))
-      case ReadPreference.Secondary(filter)          => pickConnectionAndFlatten(pickFromGroupWithFilter(secondaries, filter, secondaries.pick))
-      case ReadPreference.SecondaryPreferred(filter) => pickConnectionAndFlatten(pickFromGroupWithFilter(secondaries, filter, secondaries.pick).orElse(primary))
-      case ReadPreference.Nearest(filter)            => pickConnectionAndFlatten(pickFromGroupWithFilter(nearestGroup, filter, nearest))
+      case ReadPreference.Primary =>
+        pickConnectionAndFlatten(primary)
+
+      case ReadPreference.PrimaryPreferred(filter) =>
+        pickConnectionAndFlatten(primary.orElse(
+          pickFromGroupWithFilter(secondaries, filter, secondaries.pick)))
+
+      case ReadPreference.Secondary(filter) =>
+        pickConnectionAndFlatten(pickFromGroupWithFilter(
+          secondaries, filter, secondaries.pick))
+
+      case ReadPreference.SecondaryPreferred(filter) =>
+        pickConnectionAndFlatten(pickFromGroupWithFilter(
+          secondaries, filter, secondaries.pick).orElse(primary))
+
+      case ReadPreference.Nearest(filter) =>
+        pickConnectionAndFlatten(pickFromGroupWithFilter(
+          nearestGroup, filter, nearest))
     }
   }
 
-  def createNeededChannels(receiver: ActorRef, upTo: Int)(implicit channelFactory: ChannelFactory): NodeSet =
-    copy(nodes = nodes.foldLeft(Vector.empty[Node]) { (nodes, node) =>
-      nodes :+ node.createNeededChannels(receiver, upTo)
-    })
+  /**
+   * Returns a NodeSet with channels created to `upTo` given maximum,
+   * per each member of the set.
+   */
+  @deprecated(message = "Use `createNeededChannels` with the explicit `channelFactory`", since = "0.12-RC1")
+  def createNeededChannels(receiver: ActorRef, upTo: Int)(implicit channelFactory: ChannelFactory): NodeSet = createNeededChannels(channelFactory, receiver, upTo)
+
+  /**
+   * Returns a NodeSet with channels created to `upTo` given maximum,
+   * per each member of the set.
+   */
+  private[core] def createNeededChannels(channelFactory: ChannelFactory, receiver: ActorRef, upTo: Int): NodeSet = updateAll(_.createNeededChannels(channelFactory, receiver, upTo))
 
   def toShortString =
     s"{{NodeSet $name ${nodes.map(_.toShortString).mkString(" | ")} }}"
+
+  /** Returns the read-only information about this node. */
+  def info = {
+    val ns = nodes.map(_.info)
+
+    NodeSetInfo(name, version, ns, primary.map(_.info),
+      mongos.map(_.info), ns.filter(_.status == NodeStatus.Secondary),
+      nearest.map(_.info))
+  }
 }
 
+case class NodeSetInfo(
+    name: Option[String],
+    version: Option[Long],
+    nodes: Vector[NodeInfo],
+    primary: Option[NodeInfo],
+    mongos: Option[NodeInfo],
+    secondaries: Vector[NodeInfo],
+    nearest: Option[NodeInfo]) {
+
+  override lazy val toString = s"{{NodeSet $name ${nodes.mkString(" | ")} }}"
+}
+
+/**
+ * @param name the main name of the node
+ */
+@deprecated(message = "Will be made private", since = "0.11.10")
+@SerialVersionUID(440354552L)
 case class Node(
     name: String,
-    status: NodeStatus,
-    connections: Vector[Connection],
-    authenticated: Set[Authenticated],
+    @transient status: NodeStatus,
+    @transient connections: Vector[Connection],
+    @transient authenticated: Set[Authenticated], // TODO: connections.authenticated
     tags: Option[BSONDocument],
     protocolMetadata: ProtocolMetadata,
     pingInfo: PingInfo = PingInfo(),
     isMongos: Boolean = false) {
+
+  private[nodeset] val aliases = Set.newBuilder[String]
+
+  // TODO: Refactor as immutable once private
+  def withAlias(as: String): Node = {
+    aliases += as
+    this
+  }
+
+  /** All the node names (including its aliases) */
+  def names: Set[String] = aliases.result() + name
 
   val (host: String, port: Int) = {
     val splitted = name.span(_ != ':')
@@ -161,30 +241,106 @@ case class Node(
     })
   }
 
-  val connected = connections.filter(_.status == ConnectionStatus.Connected)
+  @transient val connected: Vector[Connection] =
+    connections.filter(_.status == ConnectionStatus.Connected)
 
-  val authenticatedConnections = new RoundRobiner(connected.filter(_.authenticated.forall { auth =>
-    authenticated.exists(_ == auth)
-  }))
+  @transient val authenticatedConnections = new RoundRobiner(
+    connected.filter(_.authenticated.forall { auth =>
+      authenticated.exists(_ == auth)
+    }))
 
+  @deprecated(message = "Use `createNeededChannels` with an explicit `channelFactory`", since = "0.12-RC1")
   def createNeededChannels(receiver: ActorRef, upTo: Int)(implicit channelFactory: ChannelFactory): Node = {
     if (connections.size < upTo) {
-      copy(connections = connections.++(for (i <- 0 until (upTo - connections.size)) yield Connection(channelFactory.create(host, port, receiver), ConnectionStatus.Disconnected, Set.empty, None)))
+      _copy(connections = connections ++ (for {
+        i ← 0 until (upTo - connections.size)
+      } yield Connection(
+        channelFactory.create(host, port, receiver),
+        ConnectionStatus.Disconnected, Set.empty, None)))
     }
     else this
   }
 
-  def toShortString = s"Node[$name: $status (${connected.size}/${connections.size} available connections), latency=${pingInfo.ping}], auth=${authenticated}"
+  private[core] def createNeededChannels(channelFactory: ChannelFactory, receiver: ActorRef, upTo: Int): Node = {
+    if (connections.size < upTo) {
+      _copy(connections = connections ++ (for {
+        i ← 0 until (upTo - connections.size)
+      } yield Connection(
+        channelFactory.create(host, port, receiver),
+        ConnectionStatus.Disconnected, Set.empty, None)))
+    }
+    else this
+  }
+
+  // TODO: Remove when aliases is refactored
+  private[reactivemongo] def _copy(
+    name: String = this.name,
+    status: NodeStatus = this.status,
+    connections: Vector[Connection] = this.connections,
+    authenticated: Set[Authenticated] = this.authenticated,
+    tags: Option[BSONDocument] = this.tags,
+    protocolMetadata: ProtocolMetadata = this.protocolMetadata,
+    pingInfo: PingInfo = this.pingInfo,
+    isMongos: Boolean = this.isMongos,
+    aliases: Set[String] = this.aliases.result()): Node = {
+
+    val node = copy(name, status, connections, authenticated, tags,
+      protocolMetadata, pingInfo, isMongos)
+
+    node.aliases ++= this.aliases.result()
+
+    node
+  }
+
+  def toShortString = s"Node[$name: $status (${connected.size}/${connections.size} available connections), latency=${pingInfo.ping}], auth=$authenticated"
+
+  /** Returns the read-only information about this node. */
+  def info = NodeInfo(name, aliases.result(), host, port, status,
+    connections.size, connections.count(_.status == ConnectionStatus.Connected),
+    authenticatedConnections.subject.size, tags,
+    protocolMetadata, pingInfo, isMongos)
+
+}
+
+/**
+ * @param connections the number of all the node connections
+ * @param connected the number of established connections for this node
+ * @param authenticated the number of authenticated connections
+ */
+case class NodeInfo(
+    name: String,
+    aliases: Set[String],
+    host: String,
+    port: Int,
+    status: NodeStatus,
+    connections: Int,
+    connected: Int,
+    authenticated: Int,
+    tags: Option[BSONDocument],
+    protocolMetadata: ProtocolMetadata,
+    pingInfo: PingInfo,
+    isMongos: Boolean) {
+
+  /** All the node names (including its aliases) */
+  def names: Set[String] = aliases + name
+
+  override lazy val toString = s"Node[$name: $status ($connected/$connections available connections), latency=${pingInfo.ping}], auth=$authenticated"
 }
 
 case class ProtocolMetadata(
-  minWireVersion: MongoWireVersion,
-  maxWireVersion: MongoWireVersion,
-  maxMessageSizeBytes: Int,
-  maxBsonSize: Int,
-  maxBulkSize: Int)
+    minWireVersion: MongoWireVersion,
+    maxWireVersion: MongoWireVersion,
+    maxMessageSizeBytes: Int,
+    maxBsonSize: Int,
+    maxBulkSize: Int) {
+  override lazy val toString =
+    s"ProtocolMetadata($minWireVersion, $maxWireVersion)"
+}
+
 object ProtocolMetadata {
-  val Default = ProtocolMetadata(MongoWireVersion.V24AndBefore, MongoWireVersion.V24AndBefore, 48000000, 16 * 1024 * 1024, 1000)
+  val Default = ProtocolMetadata(
+    MongoWireVersion.V30, MongoWireVersion.V30,
+    48000000, 16 * 1024 * 1024, 1000)
 }
 
 case class Connection(
@@ -192,40 +348,59 @@ case class Connection(
     status: ConnectionStatus,
     authenticated: Set[Authenticated],
     authenticating: Option[Authenticating]) {
-
-  def send(message: Request, writeConcern: Request) {
+  def send(message: Request, writeConcern: Request): ChannelFuture = {
     channel.write(message)
     channel.write(writeConcern)
   }
 
-  def send(message: Request) = channel.write(message)
+  def send(message: Request): ChannelFuture = channel.write(message)
 
-  def isAuthenticated(db: String, user: String) =
+  /** Returns whether the `user` is authenticated against the `db`. */
+  def isAuthenticated(db: String, user: String): Boolean =
     authenticated.exists(auth => auth.user == user && auth.db == db)
 }
 
+/**
+ * @param ping the response delay for the last IsMaster request (duration between request and its response, or `Long.MaxValue`)
+ * @param lastIsMasterTime the timestamp when the last IsMaster request has been sent (or 0)
+ * @param lastIsMasterId the ID of the last IsMaster request (or -1 if none)
+ */
 case class PingInfo(
-  ping: Long = 0,
+  ping: Long = Long.MaxValue,
   lastIsMasterTime: Long = 0,
   lastIsMasterId: Int = -1)
 
 object PingInfo {
+  // TODO: Use MongoConnectionOption (e.g. monitorRefreshMS)
   val pingTimeout = 60 * 1000
 }
 
 sealed trait NodeStatus { def queryable = false }
-sealed trait QueryableNodeStatus { self: NodeStatus => override def queryable = true }
+
+sealed trait QueryableNodeStatus { self: NodeStatus =>
+  override def queryable = true
+}
+
 sealed trait CanonicalNodeStatus { self: NodeStatus => }
+
 object NodeStatus {
-  object Uninitialized extends NodeStatus { override def toString = "Uninitialized" }
-  object NonQueryableUnknownStatus extends NodeStatus { override def toString = "NonQueryableUnknownStatus" }
+  object Uninitialized extends NodeStatus {
+    override def toString = "Uninitialized"
+  }
+
+  object NonQueryableUnknownStatus extends NodeStatus {
+    override def toString = "NonQueryableUnknownStatus"
+  }
 
   /** Cannot vote. All members start up in this state. The mongod parses the replica set configuration document while in STARTUP. */
   object Startup extends NodeStatus with CanonicalNodeStatus { override def toString = "Startup" }
+
   /** Can vote. The primary is the only member to accept write operations. */
   object Primary extends NodeStatus with QueryableNodeStatus with CanonicalNodeStatus { override def toString = "Primary" }
+
   /** Can vote. The secondary replicates the data store. */
   object Secondary extends NodeStatus with QueryableNodeStatus with CanonicalNodeStatus { override def toString = "Secondary" }
+
   /** Can vote. Members either perform startup self-checks, or transition from completing a rollback or resync. */
   object Recovering extends NodeStatus with CanonicalNodeStatus { override def toString = "Recovering" }
 
@@ -268,8 +443,17 @@ object NodeStatus {
 
 sealed trait ConnectionStatus
 object ConnectionStatus {
-  object Disconnected extends ConnectionStatus { override def toString = "Disconnected" }
-  object Connected extends ConnectionStatus { override def toString = "Connected" }
+  object Disconnected extends ConnectionStatus {
+    override def toString = "Disconnected"
+  }
+
+  object Connecting extends ConnectionStatus {
+    override def toString = "Connecting"
+  }
+
+  object Connected extends ConnectionStatus {
+    override def toString = "Connected"
+  }
 }
 
 sealed trait Authentication {
@@ -277,27 +461,27 @@ sealed trait Authentication {
   def db: String
 }
 
-case class Authenticate(db: String, user: String, password: String) extends Authentication {
-  override def toString: String = s"Authenticate($db, $user)"
+/**
+ * @param db the name of the database
+ * @param user the name of the user
+ * @param password the password for the [[user]]
+ */
+case class Authenticate(
+    db: String,
+    user: String,
+    password: String) extends Authentication {
+
+  override def toString = s"Authenticate($db, $user)"
 }
 
 sealed trait Authenticating extends Authentication {
   def password: String
 }
 
-case class CrAuthenticating(db: String, user: String, password: String, nonce: Option[String]) extends Authenticating {
-  override def toString: String =
-    s"Authenticating($db, $user, ${nonce.map(_ => "<nonce>").getOrElse("<>")})"
-}
-
-case class ScramSha1Authenticating(
-  db: String, user: String, password: String,
-  randomPrefix: String, saslStart: String,
-  conversationId: Option[Int] = None,
-  serverSignature: Option[Array[Byte]] = None,
-  step: Int = 0) extends Authenticating
-
 object Authenticating {
+  @deprecated(message = "Use [[reactivemongo.core.nodeset.CrAuthenticating]]", since = "0.11.10")
+  def apply(db: String, user: String, password: String, nonce: Option[String]): Authenticating = CrAuthenticating(db, user, password, nonce)
+
   def unapply(auth: Authenticating): Option[(String, String, String)] =
     auth match {
       case CrAuthenticating(db, user, pass, _) =>
@@ -311,8 +495,25 @@ object Authenticating {
     }
 }
 
+case class CrAuthenticating(db: String, user: String, password: String, nonce: Option[String]) extends Authenticating {
+  override def toString: String =
+    s"Authenticating($db, $user, ${nonce.map(_ => "<nonce>").getOrElse("<>")})"
+}
+
+case class ScramSha1Authenticating(
+    db: String, user: String, password: String,
+    randomPrefix: String, saslStart: String,
+    conversationId: Option[Int] = None,
+    serverSignature: Option[Array[Byte]] = None,
+    step: Int = 0) extends Authenticating {
+
+  override def toString: String =
+    s"Authenticating($db, $user})"
+}
+
 case class Authenticated(db: String, user: String) extends Authentication
 
+@deprecated("Internal class: will be made private", "0.11.14")
 class ContinuousIterator[A](iterable: Iterable[A], private var toDrop: Int = 0) extends Iterator[A] {
   private var iterator = iterable.iterator
   private var i = 0
@@ -336,15 +537,17 @@ class ContinuousIterator[A](iterable: Iterable[A], private var toDrop: Int = 0) 
   def nextIndex = i
 }
 
+@deprecated(message = "Will be made private", since = "0.11.10")
 class RoundRobiner[A, M[T] <: Iterable[T]](val subject: M[A], startAtIndex: Int = 0) {
   private val iterator = new ContinuousIterator(subject)
   private val length = subject.size
 
   def pick: Option[A] = if (iterator.hasNext) Some(iterator.next) else None
 
-  def pickWithFilter(filter: A => Boolean): Option[A] = pickWithFilter(filter, 0)
+  def pickWithFilter(filter: A => Boolean): Option[A] =
+    pickWithFilter(filter, 0)
 
-  @scala.annotation.tailrec
+  @annotation.tailrec
   private def pickWithFilter(filter: A => Boolean, tested: Int): Option[A] =
     if (length > 0 && tested < length) {
       val a = pick
@@ -358,43 +561,71 @@ class RoundRobiner[A, M[T] <: Iterable[T]](val subject: M[A], startAtIndex: Int 
     new RoundRobiner(subject, startAtIndex)
 }
 
-class ChannelFactory(options: MongoConnectionOptions, bossExecutor: Executor = Executors.newCachedThreadPool, workerExecutor: Executor = Executors.newCachedThreadPool) {
-  import javax.net.ssl.{ KeyManager, SSLContext }
+/**
+ * @param supervisor the name of the driver supervisor
+ * @param connection the name of the connection pool
+ */
+@deprecated("Internal class: will be made private", "0.11.14")
+final class ChannelFactory private[reactivemongo] (
+    supervisor: String,
+    connection: String,
+    options: MongoConnectionOptions,
+    bossExecutor: Executor = Executors.newCachedThreadPool,
+    workerExecutor: Executor = Executors.newCachedThreadPool) {
+
+  @deprecated("Initialize with related mongosystem", "0.11.14")
+  def this(opts: MongoConnectionOptions) =
+    this(
+      s"unknown-${System identityHashCode opts}",
+      s"unknown-${System identityHashCode opts}", opts)
+
+  @deprecated("Initialize with related mongosystem", "0.11.14")
+  def this(opts: MongoConnectionOptions, bossEx: Executor) =
+    this(
+      s"unknown-${System identityHashCode opts}",
+      s"unknown-${System identityHashCode opts}", opts, bossEx)
+
+  @deprecated("Initialize with related mongosystem", "0.11.14")
+  def this(opts: MongoConnectionOptions, bossEx: Executor, workerEx: Executor) =
+    this(
+      s"unknown-${System identityHashCode opts}",
+      s"unknown-${System identityHashCode opts}", opts, bossEx, workerEx)
+
+  import javax.net.ssl.SSLContext
 
   private val logger = LazyLogger("reactivemongo.core.nodeset.ChannelFactory")
+  private val timer = new HashedWheelTimer()
 
-  def create(host: String = "localhost", port: Int = 27017, receiver: ActorRef) = {
+  def create(host: String = "localhost", port: Int = 27017, receiver: ActorRef): Channel = {
     val channel = makeChannel(receiver)
-    logger.trace("created a new channel: " + channel)
+    logger.trace(s"[$supervisor/$connection] Created a new channel: $channel")
     channel
   }
 
-  val channelFactory = new NioClientSocketChannelFactory(bossExecutor, workerExecutor)
+  val channelFactory = new NioClientSocketChannelFactory(
+    bossExecutor, workerExecutor)
 
-  private val bufferFactory = new HeapChannelBufferFactory(java.nio.ByteOrder.LITTLE_ENDIAN)
+  private val bufferFactory = new HeapChannelBufferFactory(
+    java.nio.ByteOrder.LITTLE_ENDIAN)
 
-  private def makePipeline(receiver: ActorRef): ChannelPipeline = {
-    val pipeline = Channels.pipeline(new ResponseFrameDecoder(),
-      new ResponseDecoder(), new RequestEncoder(), new MongoHandler(receiver))
+  private def makePipeline(timeoutMS: Long, receiver: ActorRef): ChannelPipeline = {
+    val idleHandler = new IdleStateHandler(
+      timer, 0, 0, timeoutMS, TimeUnit.MILLISECONDS)
+
+    val pipeline = Channels.pipeline(idleHandler, new ResponseFrameDecoder(),
+      new ResponseDecoder(), new RequestEncoder(),
+      new MongoHandler(supervisor, connection, receiver))
 
     if (options.sslEnabled) {
-      val sslCtx = {
-        val tm: Array[javax.net.ssl.TrustManager] =
-          if (options.sslAllowsInvalidCert) Array(TrustAny) else null
-
-        val ctx = SSLContext.getInstance("SSL")
-        ctx.init(null, tm, new java.security.SecureRandom())
-        ctx
-      }
 
       val sslEng = {
-        val engine = sslCtx.createSSLEngine()
+        val engine = sslContext.createSSLEngine()
         engine.setUseClientMode(true)
         engine
       }
 
       val sslHandler =
-        new org.jboss.netty.handler.ssl.SslHandler(sslEng, false /* TLS */ )
+        new shaded.netty.handler.ssl.SslHandler(sslEng, false /* TLS */ )
 
       pipeline.addFirst("ssl", sslHandler)
     }
@@ -402,14 +633,66 @@ class ChannelFactory(options: MongoConnectionOptions, bossExecutor: Executor = E
     pipeline
   }
 
+  private def sslContext = {
+    import java.io.FileInputStream
+    import java.security.KeyStore
+    import javax.net.ssl.{ KeyManagerFactory, TrustManager }
+
+    val keyManagers = Option(System.getProperty("javax.net.ssl.keyStore")).map { path =>
+
+      val password = Option(System.getProperty("javax.net.ssl.keyStorePassword")).getOrElse("")
+
+      val ks = {
+        val ksType = Option(System.getProperty("javax.net.ssl.keyStoreType")).getOrElse("JKS")
+        val res = KeyStore.getInstance(ksType)
+
+        val fis = new FileInputStream(path)
+        try {
+          res.load(fis, password.toCharArray)
+        }
+        finally {
+          fis.close()
+        }
+
+        res
+      }
+
+      val kmf = {
+        val res = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm)
+        res.init(ks, password.toCharArray)
+        res
+      }
+
+      kmf.getKeyManagers
+    }
+
+    val sslCtx = {
+      val res = SSLContext.getInstance("SSL")
+
+      val tm: Array[TrustManager] = if (options.sslAllowsInvalidCert) Array(TrustAny) else null
+
+      val rand = new scala.util.Random(System.identityHashCode(tm))
+      val seed = Array.ofDim[Byte](128)
+      rand.nextBytes(seed)
+
+      res.init(keyManagers.orNull, tm, new java.security.SecureRandom(seed))
+      res
+    }
+
+    sslCtx
+  }
+
   private def makeChannel(receiver: ActorRef): Channel = {
-    val channel = channelFactory.newChannel(makePipeline(receiver))
+    val channel = channelFactory.newChannel(makePipeline(
+      options.maxIdleTimeMS.toLong, receiver))
     val config = channel.getConfig
 
     config.setTcpNoDelay(options.tcpNoDelay)
     config.setBufferFactory(bufferFactory)
     config.setKeepAlive(options.keepAlive)
     config.setConnectTimeoutMillis(options.connectTimeoutMS)
+
+    logger.debug(s"Netty channel configuration:\n- connectTimeoutMS: ${options.connectTimeoutMS}\n- maxIdleTimeMS: ${options.maxIdleTimeMS}ms\n- tcpNoDelay: ${options.tcpNoDelay}\n- keepAlive: ${options.keepAlive}\n- sslEnabled: ${options.sslEnabled}")
 
     channel
   }

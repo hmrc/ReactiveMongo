@@ -17,7 +17,6 @@ package reactivemongo.core.commands
 
 import reactivemongo.bson._
 import DefaultBSONHandlers._
-import reactivemongo.core.protocol.Response
 
 case class CappedOptions(
     size: Long,
@@ -25,7 +24,7 @@ case class CappedOptions(
   def toDocument = BSONDocument(
     "capped" -> BSONBoolean(true),
     "size" -> BSONLong(size),
-    "max" -> maxDocuments.map(max => BSONLong(max)))
+    "max" -> maxDocuments.map(max => BSONLong(max.toLong)))
 }
 
 /**
@@ -152,7 +151,7 @@ object CollStatsResult extends BSONCommandResultMaker[CollStatsResult] {
         doc.getAs[BSONInteger]("totalIndexSize").get.value,
         {
           val indexSizes = doc.getAs[BSONDocument]("indexSizes").get
-          (for (kv <- indexSizes.elements) yield kv._1 -> kv._2.asInstanceOf[BSONInteger].value).toArray
+          (for (kv <- indexSizes.elements) yield kv.name -> kv.value.asInstanceOf[BSONInteger].value).toArray
         },
         doc.getAs[BSONBooleanLike]("capped").map(_.toBoolean).getOrElse(false),
         doc.getAs[BSONDouble]("max").map(_.value.toLong))

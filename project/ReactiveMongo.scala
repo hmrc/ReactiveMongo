@@ -2,7 +2,6 @@ import sbt._
 import sbt.Keys._
 import uk.gov.hmrc.SbtAutoBuildPlugin
 import uk.gov.hmrc.versioning.SbtGitVersioning
-import uk.gov.hmrc.gitstamp.GitStamp._
 import scala.language.postfixOps
 
 object BuildSettings {
@@ -18,8 +17,8 @@ object BuildSettings {
   val buildSettings = Defaults.coreDefaultSettings ++ Seq(
     organization := "uk.gov.hmrc",
     version := buildVersion,
-    scalaVersion := "2.11.6",
-    crossScalaVersions  := Seq("2.11.6", "2.10.4"),
+    scalaVersion := "2.11.7",
+    crossScalaVersions  := Seq("2.11.7", "2.10.4"),
     crossVersion := CrossVersion.binary,
     javaOptions in test ++= Seq("-Xmx512m", "-XX:MaxPermSize=512m"),
     //fork in Test := true, // Don't share executioncontext between SBT CLI/tests
@@ -34,36 +33,6 @@ object BuildSettings {
     Travis.settings ++ Format.settings
 }
 
-//object Publish {
-//
-//  def targetRepository: Def.Initialize[Option[Resolver]] = Def.setting {
-//    val nexus = "https://oss.sonatype.org/"
-//    val snapshotsR = "snapshots" at nexus + "content/repositories/snapshots"
-//    val releasesR  = "releases"  at nexus + "service/local/staging/deploy/maven2"
-//    val resolver = if (isSnapshot.value) snapshotsR else releasesR
-//    Some(resolver)
-//  }
-//
-//  lazy val settings = Seq(
-//    publishMavenStyle := true,
-//    publishTo := targetRepository.value,
-//    publishArtifact in Test := false,
-//    pomIncludeRepository := { _ => false },
-//    licenses := Seq("Apache 2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
-//    homepage := Some(url("http://reactivemongo.org")),
-//    pomExtra := (
-//      <scm>
-//        <url>git://github.com/ReactiveMongo/ReactiveMongo.git</url>
-//        <connection>scm:git://github.com/ReactiveMongo/ReactiveMongo.git</connection>
-//      </scm>
-//      <developers>
-//        <developer>
-//          <id>sgodbillon</id>
-//          <name>Stephane Godbillon</name>
-//          <url>http://stephane.godbillon.com</url>
-//        </developer>
-//      </developers>))
-//}
 
 object Format {
   import com.typesafe.sbt.SbtScalariform._
@@ -126,20 +95,24 @@ object Resolvers {
 }
 
 object Dependencies {
-  val netty = "io.netty" % "netty" % "3.9.4.Final" cross CrossVersion.Disabled
 
-  val akkaActor = "com.typesafe.akka" %% "akka-actor" % "2.3.6"
+  val akkaActor = "com.typesafe.akka" %% "akka-actor" % "2.3.16"
+  val akkaTestkit = "com.typesafe.akka" %% "akka-testkit" % "2.3.16" % "test"
 
   val playIteratees = "com.typesafe.play" %% "play-iteratees" % "2.5.12"
 
-  val specs = "org.specs2" %% "specs2-core" % "2.4.9" % "test"
+  val specs = "org.specs2" %% "specs2-core" % "3.8.6" % "test"
+
+  val findbugs = "com.google.code.findbugs" % "jsr305" % "1.3.9" cross CrossVersion.Disabled
 
   val log4jVersion = "2.0.2"
   val log4j = Seq("org.apache.logging.log4j" % "log4j-api" % log4jVersion, "org.apache.logging.log4j" % "log4j-core" % log4jVersion)
 
-  val shapelessTest = "com.chuusai" % "shapeless" % "2.0.0" %
+
+
+  val shapelessTest = "com.chuusai" % "shapeless" % "2.3.2" %
     Test cross CrossVersion.binaryMapped {
-    case "2.10" => "2.10.4"
+    case "2.10" => "2.10.5"
     case x => x
   }
 
@@ -153,6 +126,7 @@ object ReactiveMongoBuild extends Build {
   import sbtunidoc.{ Plugin => UnidocPlugin }
   import SbtAutoBuildPlugin.autoSourceHeader
 
+
   val projectPrefix = "ReactiveMongo"
 
   lazy val reactivemongo =
@@ -162,7 +136,53 @@ object ReactiveMongoBuild extends Build {
       settings = buildSettings ++ Seq(publishArtifact := false, autoSourceHeader := false) ).
       settings(UnidocPlugin.unidocSettings: _*).
       enablePlugins(SbtAutoBuildPlugin, SbtGitVersioning).
-      aggregate(driver, bson, bsonmacros)
+      aggregate(driver, bson, bsonmacros, driver, jmx)
+
+  val driverCleanup = taskKey[Unit]("Driver compilation cleanup")
+
+
+  val slf4jVer = "1.7.12"
+  val log4jVer = "2.5"
+
+  val slf4j = "org.slf4j" % "slf4j-api" % slf4jVer
+  val slf4jSimple = "org.slf4j" % "slf4j-simple" % slf4jVer
+
+  val logApi = Seq(
+    slf4j % "provided",
+    "org.apache.logging.log4j" % "log4j-api" % log4jVer // deprecated
+  ) ++ Seq("log4j-core", "log4j-slf4j-impl").map(
+    "org.apache.logging.log4j" % _ % log4jVer % Test)
+
+  private val driverFilter: Seq[(File, String)] => Seq[(File, String)] = {
+    (_: Seq[(File, String)]).filter {
+      case (file, name) =>
+        !(name endsWith "external/reactivemongo/StaticListenerBinder.class")
+    }
+  } andThen BuildSettings.filter
+
+
+  import sbtassembly.{
+  AssemblyKeys, MergeStrategy, PathList, ShadeRule
+  }, AssemblyKeys._
+
+  lazy val shaded = Project(
+    s"$projectPrefix-Shaded",
+    file("shaded"),
+    settings = buildSettings ++ Seq(
+      crossPaths := false,
+      autoScalaLibrary := false,
+      libraryDependencies ++= Seq(
+        "io.netty" % "netty" % "3.10.6.Final" cross CrossVersion.Disabled,
+        "com.google.guava" % "guava" % "19.0" cross CrossVersion.Disabled
+      ),
+      assemblyShadeRules in assembly := Seq(
+        ShadeRule.rename("org.jboss.netty.**" -> "shaded.netty.@1").inAll,
+        ShadeRule.rename("com.google.**" -> "shaded.google.@1").inAll
+      ),
+      packageBin in Compile := target.value / (
+        assemblyJarName in assembly).value
+    )
+  )
 
   lazy val driver = Project(
     projectPrefix,
@@ -170,27 +190,51 @@ object ReactiveMongoBuild extends Build {
     settings = buildSettings ++ Seq(
       resolvers := resolversList,
       autoSourceHeader := false,
-      libraryDependencies ++= Seq(
-        netty,
-        akkaActor,
-        playIteratees,
-        commonsCodec,
-        shapelessTest,
-        specs) ++ log4j,
-      testOptions in Test += Tests.Cleanup(cl => {
-        import scala.language.reflectiveCalls
-        val c = cl.loadClass("Common$")
-        type M = { def closeDriver(): Unit }
-        val m: M = c.getField("MODULE$").get(null).asInstanceOf[M]
-        m.closeDriver()
-      }))).dependsOn(bsonmacros).enablePlugins(SbtAutoBuildPlugin, SbtGitVersioning)
+      compile in Compile <<= (compile in Compile).dependsOn(assembly in shaded),
 
+      driverCleanup := {
+        val classDir = (classDirectory in Compile).value
+        val extDir = {
+          val d = target.value / "external" / "reactivemongo"
+          d.mkdirs(); d
+        }
+
+        val classFile = "StaticListenerBinder.class"
+        val listenerClass = classDir / "external" / "reactivemongo" / classFile
+
+        streams.value.log(s"Cleanup $listenerClass ...")
+
+        IO.move(listenerClass, extDir / classFile)
+      },
+      driverCleanup <<= driverCleanup.triggeredBy(compile in Compile),
+      unmanagedJars in Compile := {
+        val shadedDir = (target in shaded).value
+        val shadedJar = (assemblyJarName in (shaded, assembly)).value
+
+        (shadedDir / "classes").mkdirs() // Findbugs workaround
+
+        Seq(Attributed(shadedDir / shadedJar)(AttributeMap.empty))
+      },
+      libraryDependencies ++= Seq(
+        playIteratees, commonsCodec, shapelessTest, specs, akkaActor, akkaTestkit, findbugs) ++ logApi,
+      testOptions in Test += Tests.Cleanup(commonCleanup),
+      mappings in (Compile, packageBin) ~= driverFilter,
+      //mappings in (Compile, packageDoc) ~= driverFilter,
+      mappings in (Compile, packageSrc) ~= driverFilter
+    )
+  ).dependsOn(bsonmacros, shaded).enablePlugins(SbtAutoBuildPlugin, SbtGitVersioning)
 
   lazy val bson = Project(
     s"$projectPrefix-BSON",
     file("bson"),
     settings = buildSettings ++ Seq(autoSourceHeader := false)).
-    settings(libraryDependencies += specs).enablePlugins(SbtAutoBuildPlugin, SbtGitVersioning)
+    settings(libraryDependencies ++= Seq(
+      specs,
+      "org.typelevel" %% "discipline" % "0.7.2" % Test,
+      "org.specs2" %% "specs2-scalacheck" % "3.8.6" % Test,
+      "org.spire-math" %% "spire-laws" % "0.13.0" % Test
+    )).
+    enablePlugins(SbtAutoBuildPlugin, SbtGitVersioning)
 
   lazy val bsonmacros = Project(
     s"$projectPrefix-BSON-Macros",
@@ -198,10 +242,28 @@ object ReactiveMongoBuild extends Build {
     settings = buildSettings ++ Seq(
       SbtAutoBuildPlugin.autoSourceHeader := false,
       libraryDependencies +=
-        "org.scala-lang" % "scala-compiler" % scalaVersion.value
+        "org.scala-lang" % "scala-compiler" % scalaVersion.value % "provided"
     )).
     settings(libraryDependencies += specs).
     dependsOn(bson).enablePlugins(SbtAutoBuildPlugin, SbtGitVersioning)
+
+  lazy val jmx = Project(
+    s"$projectPrefix-JMX",
+    file("jmx"), settings = buildSettings).
+    settings(
+      testOptions in Test += Tests.Cleanup(commonCleanup),
+      libraryDependencies ++= Seq(specs) ++ logApi).dependsOn(driver)
+
+  private val commonCleanup: ClassLoader => Unit = { cl =>
+    import scala.language.reflectiveCalls
+
+    val c = cl.loadClass("Common$")
+    type M = { def close(): Unit }
+    val m: M = c.getField("MODULE$").get(null).asInstanceOf[M]
+
+    m.close()
+  }
+
 }
 
 object Travis {

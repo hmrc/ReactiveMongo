@@ -15,26 +15,37 @@
  */
 package reactivemongo.core.protocol
 
-import akka.actor.ActorRef
 import java.nio.ByteOrder
-import org.jboss.netty.buffer._
-import org.jboss.netty.bootstrap._
-import org.jboss.netty.channel._
-import org.jboss.netty.channel.socket.nio._
-import org.jboss.netty.handler.codec.oneone._
-import org.jboss.netty.handler.codec.frame.FrameDecoder
-import reactivemongo.core.actors.{ ChannelConnected, ChannelClosed, ChannelDisconnected }
+
+import akka.actor.ActorRef
+
+import shaded.netty.buffer._
+import shaded.netty.channel._
+import shaded.netty.handler.codec.oneone._
+import shaded.netty.handler.codec.frame.FrameDecoder
+import shaded.netty.handler.timeout.{
+  IdleStateEvent,
+  IdleStateAwareChannelHandler
+}
+
+import reactivemongo.core.actors.{
+  ChannelConnected,
+  ChannelClosed,
+  ChannelDisconnected
+}
 import reactivemongo.api.SerializationPack
 import reactivemongo.api.commands.GetLastError
 import reactivemongo.core.errors._
 import reactivemongo.core.netty._
-import reactivemongo.utils.LazyLogger
+import reactivemongo.util.LazyLogger
 import BufferAccessors._
 import reactivemongo.api.ReadPreference
 
 object `package` {
-  implicit class RichBuffer(val buffer: ChannelBuffer) extends AnyVal {
+  @deprecated("Will be removed", "0.12.0")
+  class RichBuffer(val buffer: ChannelBuffer) extends AnyVal {
     import scala.collection.mutable.ArrayBuffer
+
     /** Write a UTF-8 encoded C-Style String. */
     def writeCString(s: String): ChannelBuffer = {
       val bytes = s.getBytes("utf-8")
@@ -76,16 +87,15 @@ object `package` {
 
     /** Reads a UTF-8 C-Style String. */
     def readCString(): String = {
-      @scala.annotation.tailrec
+      @annotation.tailrec
       def readCString(array: ArrayBuffer[Byte]): String = {
         val byte = buffer.readByte
-        if (byte == 0x00)
-          new String(array.toArray, "UTF-8")
+        if (byte == 0x00) new String(array.toArray, "UTF-8")
         else readCString(array += byte)
       }
+
       readCString(new ArrayBuffer[Byte](16))
     }
-
   }
 }
 
@@ -109,6 +119,7 @@ trait ChannelBufferWritable {
 trait ChannelBufferReadable[T] {
   /** Makes an instance of T from the data from the given buffer. */
   def readFrom(buffer: ChannelBuffer): T
+
   /** @see readFrom */
   def apply(buffer: ChannelBuffer): T = readFrom(buffer)
 }
@@ -128,7 +139,7 @@ case class MessageHeader(
     responseTo: Int,
     opCode: Int) extends ChannelBufferWritable {
   override val writeTo = writeTupleToBuffer4((messageLength, requestID, responseTo, opCode)) _
-  override def size = 4 + 4 + 4 + 4
+  override val size = 4 + 4 + 4 + 4
 }
 
 /** Header deserializer from a [[http://static.netty.io/3.5/api/org/jboss/netty/buffer/ChannelBuffer.html ChannelBuffer]]. */
@@ -161,14 +172,22 @@ case class Request(
     documents: BufferSequence,
     readPreference: ReadPreference = ReadPreference.primary,
     channelIdHint: Option[Int] = None) extends ChannelBufferWritable {
+  private def write(buffer: ChannelBuffer, writable: ChannelBufferWritable) =
+    writable writeTo buffer
+
   override val writeTo = { buffer: ChannelBuffer =>
-    buffer write header
-    buffer write op
+    write(buffer, header)
+    write(buffer, op)
     buffer writeBytes documents.merged
   }
+
   override def size = 16 + op.size + documents.merged.writerIndex
+
   /** Header of this request */
   lazy val header = MessageHeader(size, requestID, responseTo, op.code)
+
+  override def toString =
+    s"Request($requestID, $responseTo, $op, $readPreference, $channelIdHint)"
 }
 
 /**
@@ -260,15 +279,12 @@ case class Response(
     reply: Reply,
     documents: ChannelBuffer,
     info: ResponseInfo) {
-  /**
-   * if this response is in error, explain this error.
-   */
+  /** If this response is in error, explain this error. */
   lazy val error: Option[DatabaseException] = {
     if (reply.inError) {
       val bson = Response.parse(this)
-      //val bson = ReplyDocumentIterator(reply, documents)
-      if (bson.hasNext)
-        Some(ReactiveMongoException(bson.next))
+
+      if (bson.hasNext) Some(ReactiveMongoException(bson.next))
       else None
     }
     else None
@@ -281,7 +297,8 @@ object Response {
   import reactivemongo.bson.DefaultBSONHandlers.BSONDocumentIdentity
 
   def parse(response: Response): Iterator[BSONDocument] =
-    ReplyDocumentIterator(BSONSerializationPack)(response.reply, response.documents)(BSONDocumentIdentity)
+    ReplyDocumentIterator(BSONSerializationPack)(
+      response.reply, response.documents)(BSONDocumentIdentity)
 }
 
 /**
@@ -292,12 +309,15 @@ object Response {
 case class ResponseInfo(channelId: Int)
 
 sealed trait MongoWireVersion extends Ordered[MongoWireVersion] {
+  /** The numeric representation */
   def value: Int
 
   final def compare(x: MongoWireVersion): Int =
     if (value == x.value) 0
     else if (value < x.value) -1
     else 1
+
+  override lazy val hashCode = toString.hashCode
 }
 
 object MongoWireVersion {
@@ -310,14 +330,49 @@ object MongoWireVersion {
    *
    * But wireProtocol=1 is virtually non-existent; Mongo 2.4 was 0 and Mongo 2.6 is 2.
    */
-  object V24AndBefore extends MongoWireVersion { val value = 0 }
-  object V26 extends MongoWireVersion { val value = 2 }
-  object V30 extends MongoWireVersion { val value = 3 }
+  @deprecated(message = "No longer supported", since = "0.12.0")
+  object V24AndBefore extends MongoWireVersion {
+    val value = 0
+    override val toString = "<=2.4"
 
-  def apply(v: Int): MongoWireVersion =
-    if (v >= V30.value) V30
-    else if (v >= V26.value) V26
-    else V24AndBefore
+    override def equals(that: Any): Boolean = that == V24AndBefore
+  }
+
+  object V26 extends MongoWireVersion {
+    val value = 2
+    override val toString = "2.6"
+
+    override def equals(that: Any): Boolean =
+      that != null && that.isInstanceOf[V26.type]
+  }
+
+  object V30 extends MongoWireVersion {
+    val value = 3
+    override val toString = "3.0"
+    override def equals(that: Any): Boolean =
+      that != null && that.isInstanceOf[V30.type]
+  }
+
+  object V32 extends MongoWireVersion {
+    val value = 4
+    override val toString = "3.2"
+    override def equals(that: Any): Boolean =
+      that != null && that.isInstanceOf[V32.type]
+  }
+
+  object V34 extends MongoWireVersion {
+    val value = 5
+    override val toString = "3.4"
+    override def equals(that: Any): Boolean =
+      that != null && that.isInstanceOf[V34.type]
+  }
+
+  def apply(v: Int): MongoWireVersion = {
+    if (v <= V26.value) V26
+    else if (v >= V34.value) V34
+    else if (v >= V32.value) V32
+    else V30
+  }
 
   def unapply(v: MongoWireVersion): Option[Int] = Some(v.value)
 }
@@ -332,8 +387,9 @@ private[reactivemongo] class RequestEncoder extends OneToOneEncoder {
         message writeTo buffer
         buffer
       }
+
       case _ => {
-        logger.error("weird... do not know how to encode this object: " + obj)
+        logger.error(s"Weird... do not know how to encode this object: $obj")
         obj
       }
     }
@@ -342,20 +398,21 @@ private[reactivemongo] class RequestEncoder extends OneToOneEncoder {
 
 object ReplyDocumentIterator {
   def apply[P <: SerializationPack, A](pack: P)(reply: Reply, buffer: ChannelBuffer)(implicit reader: pack.Reader[A]): Iterator[A] = new Iterator[A] {
+    override val isTraversableAgain = false // TODO: Add test
     override def hasNext = buffer.readable
-    override def next =
-      try {
-        val cbrb = ChannelBufferReadableBuffer(buffer.readBytes(buffer.getInt(buffer.readerIndex)))
-        pack.readAndDeserialize(cbrb, reader)
-      }
-      catch {
-        case e: IndexOutOfBoundsException =>
-          /*
-           * If this happens, the buffer is exhausted, and there is probably a bug.
-           * It may happen if an enumerator relying on it is concurrently applied to many iteratees – which should not be done!
-           */
-          throw ReplyDocumentIteratorExhaustedException(e)
-      }
+
+    override def next = try {
+      val cbrb = ChannelBufferReadableBuffer(buffer.readBytes(buffer.getInt(buffer.readerIndex)))
+      pack.readAndDeserialize(cbrb, reader)
+    }
+    catch {
+      case e: IndexOutOfBoundsException =>
+        /*
+         * If this happens, the buffer is exhausted, and there is probably a bug.
+         * It may happen if an enumerator relying on it is concurrently applied to many iteratees – which should not be done!
+         */
+        throw ReplyDocumentIteratorExhaustedException(e)
+    }
   }
 }
 
@@ -382,54 +439,71 @@ private[reactivemongo] class ResponseFrameDecoder extends FrameDecoder {
 }
 
 private[reactivemongo] class ResponseDecoder extends OneToOneDecoder {
-  import java.net.InetSocketAddress
-
-  def decode(ctx: ChannelHandlerContext, channel: Channel, obj: Object) = {
+  def decode(ctx: ChannelHandlerContext, channel: Channel, obj: Object): Response = {
     val buffer = obj.asInstanceOf[ChannelBuffer]
     val header = MessageHeader(buffer)
-    val reply = Reply(buffer)
 
-    Response(header, reply, buffer, ResponseInfo(channel.getId))
+    Response(header, Reply(buffer), buffer, ResponseInfo(channel.getId))
   }
 }
 
-private[reactivemongo] class MongoHandler(receiver: ActorRef) extends SimpleChannelHandler {
-  import MongoHandler._
+private[reactivemongo] class MongoHandler(
+    supervisor: String, connection: String, receiver: ActorRef) extends IdleStateAwareChannelHandler {
 
   override def messageReceived(ctx: ChannelHandlerContext, e: MessageEvent) {
     val response = e.getMessage.asInstanceOf[Response]
-    log(e, s"messageReceived $response will be send to $receiver")
+    log(e, s"messageReceived: $response will be send to $receiver")
     receiver ! response
     super.messageReceived(ctx, e)
   }
 
   override def writeComplete(ctx: ChannelHandlerContext, e: WriteCompletionEvent) {
-    log(e, "a write is complete!")
+    log(e, "A write is complete!")
     super.writeComplete(ctx, e)
   }
+
   override def writeRequested(ctx: ChannelHandlerContext, e: MessageEvent) {
-    log(e, "a write is requested!")
+    log(e, "A write is requested!")
     super.writeRequested(ctx, e)
   }
+
   override def channelConnected(ctx: ChannelHandlerContext, e: ChannelStateEvent) {
-    log(e, "connected")
+    log(e, "Channel is connected")
     receiver ! ChannelConnected(e.getChannel.getId)
     super.channelConnected(ctx, e)
   }
+
   override def channelDisconnected(ctx: ChannelHandlerContext, e: ChannelStateEvent) {
-    log(e, "disconnected")
+    log(e, "Channel is disconnected")
     receiver ! ChannelDisconnected(e.getChannel.getId)
-  }
-  override def channelClosed(ctx: ChannelHandlerContext, e: ChannelStateEvent) {
-    log(e, "closed")
-    receiver ! ChannelClosed(e.getChannel.getId)
-  }
-  override def exceptionCaught(ctx: org.jboss.netty.channel.ChannelHandlerContext, e: org.jboss.netty.channel.ExceptionEvent) {
-    log(e, s"CHANNEL ERROR: ${e.getCause}")
+    super.channelDisconnected(ctx, e)
   }
 
-  def log(e: ChannelEvent, s: String) =
-    logger.trace(s"(channel=${e.getChannel.getId}) $s")
+  override def channelClosed(ctx: ChannelHandlerContext, e: ChannelStateEvent) {
+    if (e.getChannel.getRemoteAddress != null) log(e, "Channel is closed")
+
+    receiver ! ChannelClosed(e.getChannel.getId)
+
+    super.channelClosed(ctx, e)
+  }
+
+  override def exceptionCaught(ctx: ChannelHandlerContext, e: shaded.netty.channel.ExceptionEvent) = log(e, "Channel error", e.getCause)
+
+  override def channelIdle(ctx: ChannelHandlerContext, e: IdleStateEvent) = {
+    val now = System.currentTimeMillis()
+    val last = e.getLastActivityTimeMillis
+
+    log(e, s"Channel has been inactive for ${now - last} (last = $last)")
+    e.getChannel.close()
+
+    super.channelIdle(ctx, e)
+  }
+
+  @inline def log(e: ChannelEvent, s: String) = MongoHandler.
+    logger.trace(s"[$supervisor/$connection @ ${e.getChannel}] $s")
+
+  @inline def log(e: ChannelEvent, s: String, cause: Throwable) = MongoHandler.
+    logger.trace(s"[$supervisor/$connection @ ${e.getChannel}] $s", cause)
 }
 
 private[reactivemongo] object MongoHandler {

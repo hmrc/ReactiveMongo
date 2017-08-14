@@ -1,29 +1,36 @@
 package reactivemongo.api.commands.bson
 
+import scala.util.{ Failure, Success }
+
 import reactivemongo.api.commands._
 import reactivemongo.bson._
 
+import reactivemongo.core.errors.GenericDriverException
+
 object BSONDropDatabaseImplicits {
-  implicit object DropDatabaseWriter extends BSONDocumentWriter[DropDatabase.type] {
+  implicit object DropDatabaseWriter
+      extends BSONDocumentWriter[DropDatabase.type] {
     val command = BSONDocument("dropDatabase" -> 1)
     def write(dd: DropDatabase.type): BSONDocument = command
   }
 }
 
 object BSONListCollectionNamesImplicits {
-  implicit object ListCollectionNamesWriter extends BSONDocumentWriter[ListCollectionNames.type] {
+  implicit object ListCollectionNamesWriter
+      extends BSONDocumentWriter[ListCollectionNames.type] {
     val command = BSONDocument("listCollections" -> 1)
     def write(ls: ListCollectionNames.type): BSONDocument = command
   }
 
-  implicit object BSONCollectionNameReaders extends BSONDocumentReader[CollectionNames] {
+  implicit object BSONCollectionNameReaders
+      extends BSONDocumentReader[CollectionNames] {
     def read(doc: BSONDocument): CollectionNames = (for {
       _ <- doc.getAs[BSONNumberLike]("ok").map(_.toInt).filter(_ == 1)
       cr <- doc.getAs[BSONDocument]("cursor")
       fb <- cr.getAs[List[BSONDocument]]("firstBatch")
       ns <- wtColNames(fb, Nil)
-    } yield CollectionNames(ns)).getOrElse[CollectionNames](throw new Exception(
-      "Fails to read collection names"))
+    } yield CollectionNames(ns)).getOrElse[CollectionNames](
+      throw GenericDriverException("fails to read collection names"))
   }
 
   @annotation.tailrec
@@ -36,6 +43,7 @@ object BSONListCollectionNamesImplicits {
   }
 }
 
+@deprecated("Use [[BSONDropCollectionImplicits]]", "0.12.0")
 object BSONDropImplicits {
   implicit object DropWriter extends BSONDocumentWriter[ResolvedCollectionCommand[Drop.type]] {
     def write(command: ResolvedCollectionCommand[Drop.type]): BSONDocument =
@@ -43,10 +51,30 @@ object BSONDropImplicits {
   }
 }
 
+object BSONDropCollectionImplicits {
+  implicit object DropCollectionWriter extends BSONDocumentWriter[ResolvedCollectionCommand[DropCollection.type]] {
+    def write(command: ResolvedCollectionCommand[DropCollection.type]): BSONDocument = BSONDocument("drop" -> command.collection)
+  }
+
+  implicit object DropCollectionResultReader
+      extends BSONDocumentReader[DropCollectionResult] {
+    def read(doc: BSONDocument): DropCollectionResult =
+      CommonImplicits.UnitBoxReader.readTry(doc).transform(
+        { _ => Success(true) }, { error =>
+          if (doc.getAs[BSONNumberLike]("code"). // code == 26
+            map(_.toInt).exists(_ == 26) ||
+            doc.getAs[String]("errmsg").
+            exists(_ startsWith "ns not found")) {
+            Success(false) // code not avail. before 3.x
+          }
+          else Failure(error)
+        }).map(DropCollectionResult(_)).get
+  }
+}
+
 object BSONEmptyCappedImplicits {
   implicit object EmptyCappedWriter extends BSONDocumentWriter[ResolvedCollectionCommand[EmptyCapped.type]] {
-    def write(command: ResolvedCollectionCommand[EmptyCapped.type]): BSONDocument =
-      BSONDocument("emptyCapped" -> command.collection)
+    def write(command: ResolvedCollectionCommand[EmptyCapped.type]): BSONDocument = BSONDocument("emptyCapped" -> command.collection)
   }
 }
 
@@ -71,8 +99,9 @@ object BSONCreateImplicits {
     def write(command: ResolvedCollectionCommand[Create]): BSONDocument =
       BSONDocument(
         "create" -> command.collection,
-        "autoIndexId" -> command.command.autoIndexId) ++ command.command.capped.map(capped =>
-          CappedWriter.write(capped) ++ ("capped" -> true)).getOrElse(BSONDocument())
+        "autoIndexId" -> command.command.autoIndexId) ++ command.command.capped.fold(BSONDocument.empty)(capped => {
+          CappedWriter.write(capped) ++ ("capped" -> true)
+        })
   }
 }
 
@@ -80,7 +109,8 @@ object BSONCollStatsImplicits {
   implicit object CollStatsWriter extends BSONDocumentWriter[ResolvedCollectionCommand[CollStats]] {
     def write(command: ResolvedCollectionCommand[CollStats]): BSONDocument =
       BSONDocument(
-        "collStats" -> command.collection, "scale" -> command.command.scale)
+        "collStats" -> command.collection,
+        "scale" -> command.command.scale)
   }
 
   implicit object CollStatsResultReader extends DealingWithGenericCommandErrorsReader[CollStatsResult] {
@@ -99,10 +129,11 @@ object BSONCollStatsImplicits {
       doc.getAs[BSONNumberLike]("totalIndexSize").map(_.toInt).get,
       {
         val indexSizes = doc.getAs[BSONDocument]("indexSizes").get
-        (for (kv <- indexSizes.elements) yield kv._1 -> kv._2.asInstanceOf[BSONInteger].value).toArray
+        (for (kv <- indexSizes.elements) yield kv._1 -> kv._2.asInstanceOf[BSONInteger].value).toList
       },
       doc.getAs[BSONBooleanLike]("capped").fold(false)(_.toBoolean),
-      doc.getAs[BSONNumberLike]("max").map(_.toLong))
+      doc.getAs[BSONNumberLike]("max").map(_.toLong),
+      doc.getAs[BSONNumberLike]("maxSize").map(_.toDouble))
   }
 }
 
@@ -158,15 +189,18 @@ object BSONListIndexesImplicits {
 
     def read(doc: BSONDocument): List[Index] = (for {
       _ <- doc.getAs[BSONNumberLike]("ok").fold[Option[Unit]](
-        throw new Exception("the result of listIndexes must be ok")) { ok =>
-
-          if (ok.toInt == 1) Some(())
-          else throw doc.asOpt[WriteResult].getOrElse(
-            new Exception(s"fails to create index: ${BSONDocument pretty doc}"))
+        throw GenericDriverException(
+          "the result of listIndexes must be ok")) { ok =>
+          if (ok.toInt == 1) Some(()) else {
+            throw doc.asOpt[WriteResult].
+              flatMap[Exception](WriteResult.lastError).
+              getOrElse(new GenericDriverException(
+                s"fails to create index: ${BSONDocument pretty doc}"))
+          }
         }
       a <- doc.getAs[BSONDocument]("cursor")
       b <- a.getAs[List[BSONDocument]]("firstBatch")
-    } yield b).fold[List[Index]](throw new Exception(
+    } yield b).fold[List[Index]](throw GenericDriverException(
       "the cursor and firstBatch must be defined"))(readBatch(_, Nil).get)
 
   }
@@ -180,7 +214,8 @@ object BSONCreateIndexesImplicits {
     implicit val nsIndexWriter = IndexesManager.NSIndexWriter
 
     def write(cmd: ResolvedCollectionCommand[CreateIndexes]): BSONDocument = {
-      BSONDocument("createIndexes" -> cmd.collection,
+      BSONDocument(
+        "createIndexes" -> cmd.collection,
         "indexes" -> cmd.command.indexes.map(NSIndex(
           cmd.command.db + "." + cmd.collection, _)))
     }
@@ -193,7 +228,7 @@ object BSONCreateIndexesImplicits {
 
     def read(doc: BSONDocument): WriteResult =
       doc.getAs[BSONNumberLike]("ok").map(_.toInt).fold[WriteResult](
-        throw new Exception("the count must be defined")) { n =>
+        throw GenericDriverException("the count must be defined")) { n =>
           doc.getAs[String]("errmsg").fold[WriteResult](
             DefaultWriteResult(true, n, Nil, None, None, None))(
               err => DefaultWriteResult(false, n, Nil, None, None, Some(err)))
@@ -201,6 +236,14 @@ object BSONCreateIndexesImplicits {
   }
 }
 
+/**
+ * {{{
+ * import reactivemongo.api.commands.ReplSetGetStatus
+ * import reactivemongo.api.commands.bson.BSONReplSetGetStatusImplicits._
+ *
+ * adminDb.runCommand(ReplSetGetStatus)
+ * }}}
+ */
 object BSONReplSetGetStatusImplicits {
   implicit object ReplSetGetStatusWriter
       extends BSONDocumentWriter[ReplSetGetStatus.type] {
@@ -213,18 +256,16 @@ object BSONReplSetGetStatusImplicits {
       extends BSONDocumentReader[ReplSetMember] {
 
     def read(doc: BSONDocument): ReplSetMember = (for {
-      id <- doc.getAs[BSONNumberLike]("_id").map(_.toLong)
-      name <- doc.getAs[String]("name")
-      health <- doc.getAs[BSONNumberLike]("health").map(_.toInt)
-      state <- doc.getAs[BSONNumberLike]("state").map(_.toInt)
-      stateStr <- doc.getAs[String]("stateStr")
-      uptime <- doc.getAs[BSONNumberLike]("uptime").map(_.toLong)
-      optime <- doc.getAs[BSONNumberLike]("optimeDate").map(_.toLong)
-      lastHeartbeat <- doc.getAs[BSONNumberLike]("lastHeartbeat").map(_.toLong)
-      lastHeartbeatRecv <- doc.getAs[BSONNumberLike](
-        "lastHeartbeatRecv").map(_.toLong)
+      id <- doc.getAsTry[BSONNumberLike]("_id").map(_.toLong)
+      name <- doc.getAsTry[String]("name")
+      health <- doc.getAsTry[BSONNumberLike]("health").map(_.toInt)
+      state <- doc.getAsTry[BSONNumberLike]("state").map(_.toInt)
+      stateStr <- doc.getAsTry[String]("stateStr")
+      uptime <- doc.getAsTry[BSONNumberLike]("uptime").map(_.toLong)
+      optime <- doc.getAsTry[BSONNumberLike]("optimeDate").map(_.toLong)
     } yield ReplSetMember(id, name, health, state, stateStr, uptime, optime,
-      lastHeartbeat, lastHeartbeatRecv,
+      doc.getAs[BSONNumberLike]("lastHeartbeat").map(_.toLong),
+      doc.getAs[BSONNumberLike]("lastHeartbeatRecv").map(_.toLong),
       doc.getAs[String]("lastHeartbeatMessage"),
       doc.getAs[BSONNumberLike]("electionTime").map(_.toLong),
       doc.getAs[BSONBooleanLike]("self").fold(false)(_.toBoolean),
@@ -238,39 +279,94 @@ object BSONReplSetGetStatusImplicits {
       extends DealingWithGenericCommandErrorsReader[ReplSetStatus] {
 
     def readResult(doc: BSONDocument): ReplSetStatus = (for {
-      name <- doc.getAs[String]("set")
-      time <- doc.getAs[BSONNumberLike]("date").map(_.toLong)
-      myState <- doc.getAs[BSONNumberLike]("myState").map(_.toInt)
-      members <- doc.getAs[List[ReplSetMember]]("members")
+      name <- doc.getAsTry[String]("set")
+      time <- doc.getAsTry[BSONNumberLike]("date").map(_.toLong)
+      myState <- doc.getAsTry[BSONNumberLike]("myState").map(_.toInt)
+      members <- doc.getAsTry[List[ReplSetMember]]("members")
     } yield ReplSetStatus(name, time, myState, members)).get
   }
 }
 
-object BSONServerStatusImplicits {
-  implicit object BSONServerStatusWriter
-      extends BSONDocumentWriter[ServerStatus.type] {
+/**
+ * {{{
+ * import reactivemongo.api.commands.Resync
+ * import reactivemongo.api.commands.bson.BSONResyncImplicits._
+ *
+ * db.runCommand(Resync)
+ * }}}
+ */
+object BSONResyncImplicits {
+  private val logger =
+    reactivemongo.util.LazyLogger("reactivemongo.api.commands.bson.Resync")
 
-    val bsonCmd = BSONDocument("serverStatus" -> 1)
-    def write(command: ServerStatus.type) = bsonCmd
+  implicit object ResyncReader extends BSONDocumentReader[ResyncResult.type] {
+    @inline def notDeadWarn(err: BSONCommandError) =
+      err.code.exists(_ == 125) || err.errmsg.exists(_ startsWith "not dead")
+
+    def read(doc: BSONDocument): ResyncResult.type = try {
+      CommonImplicits.UnitBoxReader.read(doc)
+      ResyncResult
+    }
+    catch {
+      case err: BSONCommandError if (notDeadWarn(err)) => {
+        logger.warn(s"no resync done: ${err.errmsg mkString ""}")
+        ResyncResult
+      }
+      case error: Throwable => throw error
+    }
   }
 
-  implicit object BSONServerStatusResultReader
-      extends DealingWithGenericCommandErrorsReader[ServerStatusResult] {
+  implicit object ResyncWriter extends BSONDocumentWriter[Resync.type] {
+    val command = BSONDocument("resync" -> 1)
+    def write(dd: Resync.type): BSONDocument = command
+  }
+}
 
-    def readResult(doc: BSONDocument): ServerStatusResult = (for {
-      host <- doc.getAs[String]("host")
-      version <- doc.getAs[String]("version")
-      process <- doc.getAs[String]("process").map[ServerProcess] {
-        case "mongos" => MongosProcess
-        case _        => MongodProcess
-      }
-      pid <- doc.getAs[BSONNumberLike]("pid").map(_.toLong)
-      uptime <- doc.getAs[BSONNumberLike]("uptime").map(_.toLong)
-      uptimeMillis <- doc.getAs[BSONNumberLike]("uptimeMillis").map(_.toLong)
-      uptimeEstimate <- doc.getAs[BSONNumberLike](
-        "uptimeEstimate").map(_.toLong)
-      localTime <- doc.getAs[BSONNumberLike]("localTime").map(_.toLong)
-    } yield ServerStatusResult(host, version, process, pid,
-      uptime, uptimeMillis, uptimeEstimate, localTime)).get
+object BSONReplSetMaintenanceImplicits {
+  implicit val ReplSetMaintenanceReader = CommonImplicits.UnitBoxReader
+
+  implicit object ReplSetMaintenanceWriter
+      extends BSONDocumentWriter[ReplSetMaintenance] {
+
+    def write(command: ReplSetMaintenance) =
+      BSONDocument("replSetMaintenance" -> command.enable)
+  }
+}
+
+import reactivemongo.api.BSONSerializationPack
+
+object BSONCreateUserCommand
+    extends CreateUserCommand[BSONSerializationPack.type] {
+
+  import BSONCommonWriteCommandsImplicits.WriteConcernWriter
+
+  val pack = BSONSerializationPack
+
+  implicit object UserRoleWriter extends BSONWriter[UserRole, BSONValue] {
+    def write(role: UserRole): BSONValue = role match {
+      case DBUserRole(name, dbn) => BSONDocument("role" -> name, "db" -> dbn)
+      case _                     => BSONString(role.name)
+    }
+  }
+
+  implicit object CreateUserWriter extends BSONDocumentWriter[CreateUser] {
+    def write(create: CreateUser) = BSONDocument(
+      "createUser" -> create.name,
+      "pwd" -> create.pwd,
+      "customData" -> create.customData,
+      "roles" -> create.roles,
+      "digestPassword" -> create.digestPassword,
+      "writeConcern" -> create.writeConcern)
+  }
+}
+
+object BSONPingCommandImplicits {
+  implicit object PingWriter extends BSONDocumentWriter[PingCommand.type] {
+    val command = BSONDocument("ping" -> 1.0)
+    def write(ping: PingCommand.type): BSONDocument = command
+  }
+
+  implicit object PingReader extends DealingWithGenericCommandErrorsReader[Boolean] {
+    def readResult(bson: BSONDocument): Boolean = bson.getAs[BSONBooleanLike]("ok").exists(_.toBoolean)
   }
 }

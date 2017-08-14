@@ -15,8 +15,7 @@
  */
 package reactivemongo.core.protocol
 
-import org.jboss.netty.channel._
-import org.jboss.netty.buffer._
+import shaded.netty.buffer._
 
 /**
  * Helper methods to write tuples of supported types into a [[http://static.netty.io/3.5/api/org/jboss/netty/buffer/ChannelBuffer.html ChannelBuffer]].
@@ -40,8 +39,19 @@ private[protocol] object BufferAccessors {
     def apply(buffer: ChannelBuffer, l: Long) = buffer writeLong l
   }
 
-  implicit object StringChannelInteroperable extends BufferInteroperable[String] {
-    def apply(buffer: ChannelBuffer, s: String) = buffer writeCString s
+  implicit object StringChannelInteroperable
+      extends BufferInteroperable[String] {
+
+    private def writeCString(buffer: ChannelBuffer, s: String): ChannelBuffer = {
+      val bytes = s.getBytes("utf-8")
+      buffer writeBytes bytes
+      buffer writeByte 0
+      buffer
+    }
+
+    def apply(buffer: ChannelBuffer, s: String) = {
+      writeCString(buffer, s); ()
+    }
   }
 
   /**
@@ -100,6 +110,7 @@ sealed trait Op {
 sealed trait RequestOp extends Op with ChannelBufferWritable {
   /** States if this request expects a response. */
   val expectsResponse: Boolean = false
+
   /** States if this request has to be run on a primary. */
   val requiresPrimary: Boolean = false
 }
@@ -133,8 +144,10 @@ case class Reply(
 
   /** States whether the cursor given in the request was found */
   lazy val cursorNotFound = (flags & 0x01) != 0
+
   /** States if the request encountered an error */
   lazy val queryFailure = (flags & 0x02) != 0
+
   /** States if the answering server supports the AwaitData query option */
   lazy val awaitCapable = (flags & 0x08) != 0
 
@@ -171,6 +184,7 @@ case class Update(
 object UpdateFlags {
   /** If set, the database will insert the supplied object into the collection if no matching document is found. */
   val Upsert = 0x01
+
   /** If set, the database will update all matching objects in the collection. Otherwise only updates first matching doc. */
   val MultiUpdate = 0x02
 }
@@ -192,9 +206,10 @@ case class Insert(
 /**
  * Query operation.
  *
- * @param flags Operation flags.
- * @param numberToSkip number of documents to skip in the response.
- * @param numberToReturn number of documents to return in the response. 0 means the server will choose.
+ * @param flags the operation flags
+ * @param fullCollectionName the full name of the queried collection
+ * @param numberToSkip the number of documents to skip in the response.
+ * @param numberToReturn The number of documents to return in the response. 0 means the server will choose.
  */
 case class Query(
     flags: Int,

@@ -15,27 +15,18 @@
  */
 package reactivemongo.api.collections.bson
 
-import reactivemongo.api.{
-  Collection,
-  DB,
-  FailoverStrategy,
-  QueryOpts,
-  ReadPreference
-}
+import reactivemongo.api.{ DB, FailoverStrategy, ReadPreference }
 import reactivemongo.api.commands.bson._
 import reactivemongo.api.collections.{
   BatchCommands,
   GenericCollection,
-  GenericCollectionProducer,
-  GenericQueryBuilder
+  GenericCollectionProducer
 }
 import reactivemongo.api.BSONSerializationPack
-import reactivemongo.bson._
 
 object `package` {
   implicit object BSONCollectionProducer extends GenericCollectionProducer[BSONSerializationPack.type, BSONCollection] {
-    def apply(db: DB, name: String, failoverStrategy: FailoverStrategy = FailoverStrategy()): BSONCollection =
-      BSONCollection(db, name, failoverStrategy)
+    def apply(db: DB, name: String, failoverStrategy: FailoverStrategy = FailoverStrategy()): BSONCollection = new BSONCollection(db, name, failoverStrategy, db.defaultReadPreference)
   }
 }
 
@@ -45,6 +36,10 @@ object BSONBatchCommands extends BatchCommands[BSONSerializationPack.type] {
   val CountCommand = BSONCountCommand
   implicit def CountWriter = BSONCountCommandImplicits.CountWriter
   implicit def CountResultReader = BSONCountCommandImplicits.CountResultReader
+
+  val DistinctCommand = BSONDistinctCommand
+  implicit def DistinctWriter = BSONDistinctCommandImplicits.DistinctWriter
+  implicit def DistinctResultReader = BSONDistinctCommandImplicits.DistinctResultReader
 
   val InsertCommand = BSONInsertCommand
   implicit def InsertWriter = BSONInsertCommandImplicits.InsertWriter
@@ -69,61 +64,53 @@ object BSONBatchCommands extends BatchCommands[BSONSerializationPack.type] {
   implicit def LastErrorReader = BSONGetLastErrorImplicits.LastErrorReader
 }
 
-case class BSONCollection(val db: DB, val name: String, val failoverStrategy: FailoverStrategy) extends GenericCollection[BSONSerializationPack.type] {
-  val pack = BSONSerializationPack
-  val BatchCommands = BSONBatchCommands
+@SerialVersionUID(1382847900L)
+final class BSONCollection(
+  val db: DB,
+  val name: String,
+  val failoverStrategy: FailoverStrategy,
+  override val readPreference: ReadPreference) extends Product with GenericCollection[BSONSerializationPack.type]
+    with scala.Serializable with java.io.Serializable {
+
+  @transient val pack = BSONSerializationPack
+  @transient val BatchCommands = BSONBatchCommands
   def genericQueryBuilder = BSONQueryBuilder(this, failoverStrategy)
+
+  override lazy val toString =
+    s"BSONCollection('${db.name}'.'$name', $failoverStrategy)"
+
+  @deprecated(message = "No longer a case class", since = "0.12-RC2")
+  def canEqual(that: Any): Boolean = that match {
+    case _: BSONCollection => true
+    case _                 => false
+  }
+
+  @deprecated(message = "No longer a case class", since = "0.12-RC2")
+  val productArity = 3
+
+  @deprecated(message = "No longer a case class", since = "0.12-RC2")
+  def productElement(n: Int) = n match {
+    case 0 => db
+    case 1 => name
+    case _ => failoverStrategy
+  }
+
+  @deprecated(message = "No longer a case class", since = "0.12-RC2")
+  def copy(
+    db: DB = this.db,
+    name: String = this.name,
+    failoverStrategy: FailoverStrategy = this.failoverStrategy): BSONCollection = new BSONCollection(
+    db, name, failoverStrategy, readPreference)
+
+  def withReadPreference(pref: ReadPreference): BSONCollection =
+    new BSONCollection(db, name, failoverStrategy, pref)
 }
 
-case class BSONQueryBuilder(
-    collection: Collection,
-    failover: FailoverStrategy,
-    queryOption: Option[BSONDocument] = None,
-    sortOption: Option[BSONDocument] = None,
-    projectionOption: Option[BSONDocument] = None,
-    hintOption: Option[BSONDocument] = None,
-    explainFlag: Boolean = false,
-    snapshotFlag: Boolean = false,
-    commentString: Option[String] = None,
-    options: QueryOpts = QueryOpts()) extends GenericQueryBuilder[BSONSerializationPack.type] {
-  import reactivemongo.utils.option
+/** Factory and extractors */
+object BSONCollection extends scala.runtime.AbstractFunction3[DB, String, FailoverStrategy, BSONCollection] {
 
-  type Self = BSONQueryBuilder
-  val pack = BSONSerializationPack
+  @deprecated(message = "Use the class constructor", since = "0.12-RC2")
+  def apply(db: DB, name: String, failoverStrategy: FailoverStrategy): BSONCollection = new BSONCollection(db, name, failoverStrategy, db.defaultReadPreference)
 
-  def copy(
-    queryOption: Option[BSONDocument] = queryOption,
-    sortOption: Option[BSONDocument] = sortOption,
-    projectionOption: Option[BSONDocument] = projectionOption,
-    hintOption: Option[BSONDocument] = hintOption,
-    explainFlag: Boolean = explainFlag,
-    snapshotFlag: Boolean = snapshotFlag,
-    commentString: Option[String] = commentString,
-    options: QueryOpts = options,
-    failover: FailoverStrategy = failover): BSONQueryBuilder =
-    BSONQueryBuilder(collection, failover, queryOption, sortOption, projectionOption, hintOption, explainFlag, snapshotFlag, commentString, options)
-
-  def merge(readPreference: ReadPreference): BSONDocument = {
-    // Primary and SecondaryPreferred are encoded as the slaveOk flag;
-    // the others are encoded as $readPreference field.
-    val readPreferenceDocument = readPreference match {
-      case ReadPreference.Primary                    => None
-      case ReadPreference.PrimaryPreferred(filter)   => Some(BSONDocument("mode" -> "primaryPreferred"))
-      case ReadPreference.Secondary(filter)          => Some(BSONDocument("mode" -> "secondary"))
-      case ReadPreference.SecondaryPreferred(filter) => None
-      case ReadPreference.Nearest(filter)            => Some(BSONDocument("mode" -> "nearest"))
-    }
-    val optionalFields = List(
-      sortOption.map { "$orderby" -> _ },
-      hintOption.map { "$hint" -> _ },
-      commentString.map { "$comment" -> BSONString(_) },
-      option(explainFlag, "$explain" -> BSONBoolean(true)),
-      option(snapshotFlag, "$snapshot" -> BSONBoolean(true)),
-      readPreferenceDocument.map { "$readPreference" -> _ }).flatten
-    val query = queryOption.getOrElse(BSONDocument())
-    if (optionalFields.isEmpty)
-      query
-    else
-      BSONDocument(("$query" -> query) :: optionalFields)
-  }
+  def unapply(c: BSONCollection): Option[(DB, String, FailoverStrategy)] = Some((c.db, c.name, c.failoverStrategy))
 }

@@ -1,12 +1,22 @@
 package reactivemongo.api.commands.bson
 
-import reactivemongo.api.BSONSerializationPack
-import reactivemongo.api.commands._
-import reactivemongo.bson._
+import reactivemongo.api.ReadConcern
+import reactivemongo.api.commands.{ CommandError, UnitBox }
+import reactivemongo.bson.{
+  BSONBooleanLike,
+  BSONDocument,
+  BSONDocumentReader,
+  BSONDocumentWriter
+}
 
 object CommonImplicits {
-  implicit object UnitBoxReader extends BSONDocumentReader[UnitBox.type] {
-    def read(doc: BSONDocument): UnitBox.type = UnitBox
+  implicit object UnitBoxReader
+      extends DealingWithGenericCommandErrorsReader[UnitBox.type] {
+    def readResult(doc: BSONDocument): UnitBox.type = UnitBox
+  }
+
+  implicit object ReadConcernWriter extends BSONDocumentWriter[ReadConcern] {
+    def write(concern: ReadConcern) = BSONDocument("level" -> concern.level)
   }
 }
 
@@ -26,7 +36,7 @@ trait DealingWithGenericCommandErrorsReader[A] extends BSONDocumentReader[A] {
   /** Results the successful result (only if `ok` is true). */
   def readResult(doc: BSONDocument): A
 
-  final def read(doc: BSONDocument): A =
+  final def read(doc: BSONDocument): A = {
     if (!doc.getAs[BSONBooleanLike]("ok").exists(_.toBoolean)) {
       throw new DefaultBSONCommandError(
         code = doc.getAs[Int]("code"),
@@ -34,4 +44,5 @@ trait DealingWithGenericCommandErrorsReader[A] extends BSONDocumentReader[A] {
         originalDocument = doc)
     }
     else readResult(doc)
+  }
 }

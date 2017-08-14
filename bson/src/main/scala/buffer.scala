@@ -22,7 +22,7 @@ import scala.collection.mutable.ArrayBuffer
  *
  * The implementation '''MUST''' ensure it stores data in little endian when needed.
  */
-trait WritableBuffer {
+trait WritableBuffer { self =>
   /** Returns the current write index of this buffer. */
   def index: Int
 
@@ -30,20 +30,19 @@ trait WritableBuffer {
   def setInt(index: Int, value: Int): WritableBuffer
 
   /** Writes the bytes stored in the given `array` into this buffer. */
-  def writeBytes(array: Array[Byte]): WritableBuffer
+  def writeBytes(array: Array[Byte]): self.type
 
   /** Writes the bytes stored in the given `buffer` into this buffer. */
-  def writeBytes(buffer: ReadableBuffer): WritableBuffer = {
-    @scala.annotation.tailrec
-    def write(buffer: ReadableBuffer): WritableBuffer = {
-      if (buffer.readable > 1024) {
-        writeBytes(buffer.readArray(1024))
-        write(buffer)
+  def writeBytes(buffer: ReadableBuffer): self.type = {
+    @annotation.tailrec
+    def write(buf: ReadableBuffer): self.type = {
+      if (buf.readable > 1024) {
+        writeBytes(buf.readArray(1024))
+        write(buf)
       }
-      else {
-        writeBytes(buffer.readArray(buffer.readable))
-      }
+      else writeBytes(buf.readArray(buf.readable))
     }
+
     write(buffer.slice(buffer.readable))
   }
 
@@ -115,6 +114,7 @@ trait ReadableBuffer {
    */
   def slice(n: Int): ReadableBuffer
 
+  /** Returns the buffer size. */
   def size: Int
 
   /** Reads a UTF-8 String. */
@@ -142,29 +142,34 @@ trait ReadableBuffer {
   @scala.annotation.tailrec
   private def readCString(array: ArrayBuffer[Byte]): String = {
     val byte = this.readByte
-    if (byte == 0x00)
+
+    if (byte == 0x00) {
       new String(array.toArray, "UTF-8")
+    }
     else readCString(array += byte)
   }
+
+  def duplicate(): ReadableBuffer
 }
 
 trait BSONBuffer extends ReadableBuffer with WritableBuffer
 
-import java.nio.ByteBuffer
-import java.nio.ByteOrder._
+import java.nio.{ ByteBuffer, ByteOrder }, ByteOrder._
 
 /** An array-backed readable buffer. */
-case class ArrayReadableBuffer private (bytebuffer: ByteBuffer) extends ReadableBuffer {
+case class ArrayReadableBuffer private (
+    bytebuffer: ByteBuffer) extends ReadableBuffer {
+
   bytebuffer.order(LITTLE_ENDIAN)
 
   def size = bytebuffer.limit()
 
   def index = bytebuffer.position()
 
-  def index_=(i: Int) = bytebuffer.position(i)
+  def index_=(i: Int) = { bytebuffer.position(i); () }
 
   def discard(n: Int) =
-    bytebuffer.position(bytebuffer.position() + n)
+    { bytebuffer.position(bytebuffer.position() + n); () }
 
   def slice(n: Int) = {
     val nb = bytebuffer.slice()
@@ -172,8 +177,7 @@ case class ArrayReadableBuffer private (bytebuffer: ByteBuffer) extends Readable
     new ArrayReadableBuffer(nb)
   }
 
-  def readBytes(array: Array[Byte]): Unit =
-    bytebuffer.get(array)
+  def readBytes(array: Array[Byte]): Unit = { bytebuffer.get(array); () }
 
   def readByte() = bytebuffer.get()
 
@@ -189,6 +193,8 @@ case class ArrayReadableBuffer private (bytebuffer: ByteBuffer) extends Readable
     val buf = new ArrayBSONBuffer()
     buf.writeBytes(this)
   }
+
+  def duplicate() = new ArrayReadableBuffer(bytebuffer.duplicate())
 }
 
 object ArrayReadableBuffer {
@@ -197,7 +203,8 @@ object ArrayReadableBuffer {
 }
 
 /** An array-backed writable buffer. */
-class ArrayBSONBuffer protected[buffer] (protected val buffer: ArrayBuffer[Byte]) extends WritableBuffer {
+class ArrayBSONBuffer protected[buffer] (
+    protected val buffer: ArrayBuffer[Byte]) extends WritableBuffer {
   def index = buffer.length // useless
 
   def bytebuffer(size: Int) = {
@@ -222,7 +229,7 @@ class ArrayBSONBuffer protected[buffer] (protected val buffer: ArrayBuffer[Byte]
 
   def toReadableBuffer = ArrayReadableBuffer(array)
 
-  def writeBytes(array: Array[Byte]): WritableBuffer = {
+  def writeBytes(array: Array[Byte]): this.type = {
     buffer ++= array
     //index += array.length
     this

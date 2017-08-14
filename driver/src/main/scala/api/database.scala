@@ -15,52 +15,55 @@
  */
 package reactivemongo.api
 
-import collections.bson.BSONCollection
-import reactivemongo.api.indexes.IndexesManager
-import reactivemongo.bson._
-import reactivemongo.core.commands.{ Update => UpdateCommand, _ }
-import reactivemongo.utils.EitherMappableFuture._
-
 import scala.concurrent.{ ExecutionContext, Future }
-import scala.concurrent.duration._
+import scala.concurrent.duration.FiniteDuration
+
+import reactivemongo.core.commands.{
+  Command => CoreCommand,
+  SuccessfulAuthentication
+}
+
+import reactivemongo.utils.EitherMappableFuture.futureToEitherMappable
 
 /**
- * A Mongo Database.
+ * The reference to a MongoDB database, obtained from a [[reactivemongo.api.MongoConnection]].
  *
- * Example:
+ * You should consider the provided [[reactivemongo.api.DefaultDB]] implementation.
+ *
  * {{{
  * import reactivemongo.api._
  *
- * val connection = MongoConnection( List( "localhost:27016" ) )
- * val db = connection("plugin")
- * val collection = db("acoll")
- *
- * // more explicit way
- * val db2 = connection.db("plugin")
- * val collection2 = db2.collection("plugin")
+ * val connection = MongoConnection(List("localhost:27017"))
+ * val db = connection.database("plugin")
+ * val collection = db.map(_("acoll"))
  * }}}
+ *
+ * @define resolveDescription Returns a [[reactivemongo.api.Collection]] from this database
+ * @define nameParam the name of the collection to resolve
  */
-trait DB {
+sealed trait DB {
   /** The [[reactivemongo.api.MongoConnection]] that will be used to query this database. */
-  def connection: MongoConnection
+  @transient def connection: MongoConnection
+
   /** This database name. */
   def name: String
+
   /** A failover strategy for sending requests. */
   def failoverStrategy: FailoverStrategy
 
   /**
-   * Gets a [[reactivemongo.api.Collection]] from this database (alias for the `collection` method).
+   * $resolveDescription (alias for the `collection` method).
    *
-   * @param name The name of the collection to open.
+   * @param name $nameParam
    */
   def apply[C <: Collection](name: String, failoverStrategy: FailoverStrategy = failoverStrategy)(implicit producer: CollectionProducer[C] = collections.bson.BSONCollectionProducer): C = collection(name, failoverStrategy)
 
   /**
-   * Gets a [[reactivemongo.api.Collection]] from this database.
+   * $resolveDescription.
    *
-   * @param name The name of the collection to open.
+   * @param name $nameParam
    */
-  def collection[C <: Collection](name: String, failoverStrategy: FailoverStrategy = failoverStrategy)(implicit producer: CollectionProducer[C] = collections.bson.BSONCollectionProducer): C = producer.apply(this, name, failoverStrategy)
+  def collection[C <: Collection](name: String, failoverStrategy: FailoverStrategy = failoverStrategy)(implicit producer: CollectionProducer[C] = collections.bson.BSONCollectionProducer): C = producer(this, name, failoverStrategy)
 
   @inline def defaultReadPreference: ReadPreference =
     connection.options.readPreference
@@ -68,110 +71,77 @@ trait DB {
   /**
    * Sends a command and get the future result of the command.
    *
-   * @param command The command to send.
-   * @param readPreference The ReadPreference to use for this command (defaults to [[MongoConnectionOptions.readPreference]]).
+   * @param command the command to send
+   * @param readPreference the ReadPreference to use for this command (defaults to [[MongoConnectionOptions.readPreference]])
    *
    * @return a future containing the result of the command.
    */
-  @deprecated("consider using reactivemongo.api.commands along with `GenericDB.runCommand` methods", "0.11.0")
-  def command[T](command: Command[T], readPreference: ReadPreference = defaultReadPreference)(implicit ec: ExecutionContext): Future[T] = {
-    Failover(command.apply(name).maker(readPreference), connection, failoverStrategy).future.mapEither(command.ResultMaker(_))
-  }
+  @deprecated("Consider using reactivemongo.api.commands along with `DefaultDB.runCommand` methods", "0.11.0")
+  def command[T](command: CoreCommand[T], readPreference: ReadPreference = defaultReadPreference)(implicit ec: ExecutionContext): Future[T] =
+    Failover(
+      command.apply(name).maker(readPreference),
+      connection, failoverStrategy).future.mapEither(command.ResultMaker(_))
 
   /** Authenticates the connection on this database. */
   def authenticate(user: String, password: String)(implicit timeout: FiniteDuration): Future[SuccessfulAuthentication] = connection.authenticate(name, user, password)
 
-  /** Returns the database of the given name on the same MongoConnection. */
-  @deprecated("Consider using `sibling` instead", "0.10")
-  def sister(name: String, failoverStrategy: FailoverStrategy = failoverStrategy)(implicit ec: ExecutionContext) = sibling(name, failoverStrategy)
+  /**
+   * Returns the database of the given name on the same MongoConnection.
+   *
+   * @param name $nameParam
+   * @see [[sibling1]]
+   */
+  def sibling(name: String, failoverStrategy: FailoverStrategy = failoverStrategy)(implicit ec: ExecutionContext): DefaultDB = connection(name, failoverStrategy)
 
-  /** Returns the database of the given name on the same MongoConnection. */
-  def sibling(name: String, failoverStrategy: FailoverStrategy = failoverStrategy)(implicit ec: ExecutionContext) = connection.db(name, failoverStrategy)
+  /**
+   * Returns the database of the given name on the same MongoConnection.
+   *
+   * @param name $nameParam
+   */
+  def sibling1(name: String, failoverStrategy: FailoverStrategy = failoverStrategy)(implicit ec: ExecutionContext): Future[DefaultDB] = connection.database(name, failoverStrategy)
+
 }
 
+@deprecated(message = "Will be made sealed", since = "0.12-RC0")
 trait GenericDB[P <: SerializationPack with Singleton] { self: DB =>
   val pack: P
 
   import reactivemongo.api.commands._
 
+  @deprecated(message = "Either use one of the `runX` function on the DB instance, or use `reactivemongo.api.commands.Command.run` directly", since = "0.12-RC0")
   def runner = Command.run(pack)
 
-  def runCommand[R, C <: Command with CommandWithResult[R]](command: C with CommandWithResult[R])(implicit writer: pack.Writer[C], reader: pack.Reader[R], ec: ExecutionContext): Future[R] =
-    runner(self, command)
+  @deprecated(message = "Use `runCommand` with the `failoverStrategy` parameter", since = "0.12-RC0")
+  def runCommand[R, C <: Command with CommandWithResult[R]](command: C with CommandWithResult[R])(implicit writer: pack.Writer[C], reader: pack.Reader[R], ec: ExecutionContext): Future[R] = runCommand[R, C](command, failoverStrategy)
 
-  def runCommand[C <: Command](command: C)(implicit writer: pack.Writer[C]): CursorFetcher[pack.type, Cursor] = runner(self, command)
+  def runCommand[R, C <: Command with CommandWithResult[R]](command: C with CommandWithResult[R], failoverStrategy: FailoverStrategy)(implicit writer: pack.Writer[C], reader: pack.Reader[R], ec: ExecutionContext): Future[R] = Command.run(pack, failoverStrategy).apply(self, command)
 
-  def runValueCommand[A <: AnyVal, R <: BoxedAnyVal[A], C <: Command with CommandWithResult[R]](command: C with CommandWithResult[R with BoxedAnyVal[A]])(implicit writer: pack.Writer[C], reader: pack.Reader[R], ec: ExecutionContext): Future[A] = runner.unboxed(self, command)
-}
+  @deprecated(message = "Use `runCommand` with the `failoverStrategy` parameter", since = "0.12-RC0")
+  def runCommand[C <: Command](command: C)(implicit writer: pack.Writer[C]): CursorFetcher[pack.type, Cursor] = runCommand[C](command, failoverStrategy)
 
-/** A mixin that provides commands about this database itself. */
-trait DBMetaCommands { self: DB =>
-  import reactivemongo.core.protocol.MongoWireVersion
-  import reactivemongo.api.commands.{
-    Command,
-    DropDatabase,
-    ListCollectionNames,
-    ServerStatus,
-    ServerStatusResult
-  }
-  import reactivemongo.api.commands.bson.{
-    CommonImplicits,
-    BSONDropDatabaseImplicits,
-    BSONServerStatusImplicits
-  }
-  import reactivemongo.api.commands.bson.BSONListCollectionNamesImplicits._
-  import CommonImplicits._
-  import BSONDropDatabaseImplicits._
-  import BSONServerStatusImplicits._
+  def runCommand[C <: Command](command: C, failoverStrategy: FailoverStrategy)(implicit writer: pack.Writer[C]): CursorFetcher[pack.type, Cursor] = Command.run(pack, failoverStrategy).apply(self, command)
 
-  /** Drops this database. */
-  def drop()(implicit ec: ExecutionContext): Future[Unit] =
-    Command.run(BSONSerializationPack).unboxed(self, DropDatabase)
+  @deprecated(message = "Use `runValueCommand` with the `failoverStrategy` parameter", since = "0.12-RC0")
+  def runValueCommand[A <: AnyVal, R <: BoxedAnyVal[A], C <: Command with CommandWithResult[R]](command: C with CommandWithResult[R with BoxedAnyVal[A]])(implicit writer: pack.Writer[C], reader: pack.Reader[R], ec: ExecutionContext): Future[A] = runValueCommand[A, R, C](command, failoverStrategy)
 
-  /** Returns an index manager for this database. */
-  def indexesManager(implicit ec: ExecutionContext) = IndexesManager(self)
+  @deprecated("Use the alternative with `ReadPreference`", "0.12-RC5")
+  def runValueCommand[A <: AnyVal, R <: BoxedAnyVal[A], C <: Command with CommandWithResult[R]](command: C with CommandWithResult[R with BoxedAnyVal[A]], failoverStrategy: FailoverStrategy)(implicit writer: pack.Writer[C], reader: pack.Reader[R], ec: ExecutionContext): Future[A] = runValueCommand[A, R, C](command, failoverStrategy, ReadPreference.primary)
 
-  private lazy val collectionNameReader =
-    new BSONDocumentReader[String] {
-      val prefixLength = name.size + 1
-
-      def read(bson: BSONDocument) =
-        bson
-          .get("name")
-          .collect { case bsonStr: BSONString => bsonStr.value.substring(prefixLength) }
-          .getOrElse(throw new Exception("name is expected on system.namespaces query"))
-    }
-
-  /** Returns the names of the collections in this database. */
-  def collectionNames(implicit ec: ExecutionContext): Future[List[String]] = {
-    val wireVer = connection.metadata.map(_.maxWireVersion)
-
-    if (wireVer.exists(_ == MongoWireVersion.V30)) {
-      Command.run(BSONSerializationPack)(self, ListCollectionNames).map(_.names)
-    }
-    else collection("system.namespaces").as[BSONCollection]().
-      find(BSONDocument(
-        "name" -> BSONRegex("^[^\\$]+$", "") // strip off any indexes
-        )).cursor(defaultReadPreference)(
-        collectionNameReader, ec, CursorProducer.defaultCursorProducer).
-        collect[List]()
-  }
-
-  /** Returns the server status. */
-  def serverStatus(implicit ec: ExecutionContext): Future[ServerStatusResult] =
-    Command.run(BSONSerializationPack)(self, ServerStatus)
+  def runValueCommand[A <: AnyVal, R <: BoxedAnyVal[A], C <: Command with CommandWithResult[R]](command: C with CommandWithResult[R with BoxedAnyVal[A]], failoverStrategy: FailoverStrategy, readPreference: ReadPreference)(implicit writer: pack.Writer[C], reader: pack.Reader[R], ec: ExecutionContext): Future[A] = Command.run(pack, failoverStrategy).unboxed(self, command, readPreference)
 }
 
 /** The default DB implementation, that mixes in the database traits. */
+@SerialVersionUID(235871232L)
 case class DefaultDB(
     name: String,
-    connection: MongoConnection,
+    @transient connection: MongoConnection,
     failoverStrategy: FailoverStrategy = FailoverStrategy()) extends DB with DBMetaCommands with GenericDB[BSONSerializationPack.type] {
 
-  val pack: BSONSerializationPack.type = BSONSerializationPack
+  @transient val pack: BSONSerializationPack.type = BSONSerializationPack
 }
 
 object DB {
+  @deprecated("Use [[MongoConnection.database]]", "0.12.0")
   def apply(name: String, connection: MongoConnection, failoverStrategy: FailoverStrategy = FailoverStrategy()) = DefaultDB(name, connection, failoverStrategy)
 
 }
