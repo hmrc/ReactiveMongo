@@ -18,8 +18,6 @@ object BuildSettings {
     organization := "uk.gov.hmrc",
     version := buildVersion,
     scalaVersion := "2.11.7",
-    crossScalaVersions  := Seq("2.11.7", "2.10.4"),
-    crossVersion := CrossVersion.binary,
     javaOptions in test ++= Seq("-Xmx512m", "-XX:MaxPermSize=512m"),
     //fork in Test := true, // Don't share executioncontext between SBT CLI/tests
     scalacOptions ++= Seq("-unchecked", "-deprecation", "-target:jvm-1.6"),
@@ -103,7 +101,7 @@ object Dependencies {
 
   val specs = "org.specs2" %% "specs2-core" % "3.8.6" % "test"
 
-  val findbugs = "com.google.code.findbugs" % "jsr305" % "1.3.9" cross CrossVersion.Disabled
+  val findbugs = "com.google.code.findbugs" % "jsr305" % "1.3.9"
 
   val log4jVersion = "2.0.2"
   val log4j = Seq("org.apache.logging.log4j" % "log4j-api" % log4jVersion, "org.apache.logging.log4j" % "log4j-core" % log4jVersion)
@@ -172,8 +170,8 @@ object ReactiveMongoBuild extends Build {
       crossPaths := false,
       autoScalaLibrary := false,
       libraryDependencies ++= Seq(
-        "io.netty" % "netty" % "3.10.6.Final" cross CrossVersion.Disabled,
-        "com.google.guava" % "guava" % "19.0" cross CrossVersion.Disabled
+        "io.netty" % "netty" % "3.10.6.Final",
+        "com.google.guava" % "guava" % "19.0"
       ),
       assemblyShadeRules in assembly := Seq(
         ShadeRule.rename("org.jboss.netty.**" -> "shaded.netty.@1").inAll,
