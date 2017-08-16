@@ -134,7 +134,7 @@ object ReactiveMongoBuild extends Build {
       settings = buildSettings ++ Seq(publishArtifact := false, autoSourceHeader := false) ).
       settings(UnidocPlugin.unidocSettings: _*).
       enablePlugins(SbtAutoBuildPlugin, SbtGitVersioning).
-      aggregate(driver, bson, bsonmacros, driver, jmx, shaded)
+      aggregate(bson, bsonmacros, shaded, driver, jmx)
 
   val driverCleanup = taskKey[Unit]("Driver compilation cleanup")
 
