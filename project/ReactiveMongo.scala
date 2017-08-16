@@ -5,7 +5,7 @@ import uk.gov.hmrc.versioning.SbtGitVersioning
 import scala.language.postfixOps
 
 object BuildSettings {
-  val buildVersion = "0.13.0"
+  val buildVersion = "0.14.0"
 
   val filter = { (ms: Seq[(File, String)]) =>
     ms filter {
