@@ -20,8 +20,7 @@ class CollectionSpec extends org.specs2.mutable.Specification {
   "ReactiveMongo" should {
     "create a collection" in { implicit ee: EE =>
       collection.create() must beEqualTo({}).await(1, timeout) and (
-        slowColl.create() must beEqualTo({}).await(1, slowTimeout)
-      )
+        slowColl.create() must beEqualTo({}).await(1, slowTimeout))
     }
 
     "convert to capped" >> {
@@ -36,18 +35,17 @@ class CollectionSpec extends org.specs2.mutable.Specification {
       }
     }
 
-    "check if it's capped (MongoDB <= 2.6)" in { implicit ee: EE =>
-      collection.stats must beLike[CollStatsResult] {
-        case stats => stats.capped must beTrue and (stats.maxSize must beNone)
-      }.await(1, timeout)
-    } tag "mongo2"
+    //    "check if it's capped (MongoDB <= 2.6)" in { implicit ee: EE =>
+    //      collection.stats must beLike[CollStatsResult] {
+    //        case stats => stats.capped must beTrue and (stats.maxSize must beNone)
+    //      }.await(1, timeout)
+    //    } tag "mongo2"
 
     "check if it's capped (MongoDB >= 3.0)" >> {
       def statSpec(con: MongoConnection, c: BSONCollection, timeout: FiniteDuration)(implicit ee: EE) = {
         c.stats must beLike[CollStatsResult] {
           case stats => stats.capped must beTrue and (
-            stats.maxSize must beSome(cappedMaxSize)
-          )
+            stats.maxSize must beSome(cappedMaxSize))
         }.await(1, timeout)
       }
 
@@ -64,16 +62,12 @@ class CollectionSpec extends org.specs2.mutable.Specification {
       implicit ee: EE =>
         collection.insert(BSONDocument("name" -> BSONString("Jack"))).
           map(_.ok) must beTrue.await(1, timeout) and (
-            collection.count() must beEqualTo(1).await(1, timeout)
-          ) and (
-              collection.count(skip = 1) must beEqualTo(0).await(1, timeout)
-            ) and (
+            collection.count() must beEqualTo(1).await(1, timeout)) and (
+              collection.count(skip = 1) must beEqualTo(0).await(1, timeout)) and (
                 collection.count(selector = Some(BSONDocument("name" -> "Jack"))).
-                aka("matching count") must beEqualTo(1).await(1, timeout)
-              ) and (
+                aka("matching count") must beEqualTo(1).await(1, timeout)) and (
                   collection.count(selector = Some(BSONDocument("name" -> "Foo"))).
-                  aka("not matching count") must beEqualTo(0).await(1, timeout)
-                )
+                  aka("not matching count") must beEqualTo(0).await(1, timeout))
     }
 
     // Empty capped need to be enabled with enableTestCommands
