@@ -124,6 +124,27 @@ object ReactiveMongoBuild extends Build {
   import sbtunidoc.{ Plugin => UnidocPlugin }
   import SbtAutoBuildPlugin.autoSourceHeader
 
+  import scala.xml.{ Elem => XmlElem, Node => XmlNode }
+  private def transformPomDependencies(tx: XmlElem => Option[XmlNode]): XmlNode => XmlNode = { node: XmlNode =>
+    import scala.xml.{ NodeSeq, XML }
+    import scala.xml.transform.{ RewriteRule, RuleTransformer }
+
+    val tr = new RuleTransformer(new RewriteRule {
+      override def transform(node: XmlNode): NodeSeq = node match {
+        case e: XmlElem if e.label == "dependency" => tx(e) match {
+          case Some(n) => n
+          case _ => NodeSeq.Empty
+        }
+
+        case _ => node
+      }
+    })
+
+    tr.transform(node).headOption match {
+      case Some(transformed) => transformed
+      case _ => sys.error("Fails to transform the POM")
+    }
+  }
 
   val projectPrefix = "ReactiveMongo"
 
@@ -205,6 +226,8 @@ object ReactiveMongoBuild extends Build {
         IO.move(listenerClass, extDir / classFile)
       },
       driverCleanup <<= driverCleanup.triggeredBy(compile in Compile),
+      pomPostProcess := transformPomDependencies { _ => None },
+      makePom <<= makePom.dependsOn(assembly),
       unmanagedJars in Compile := {
         val shadedDir = (target in shaded).value
         val shadedJar = (assemblyJarName in (shaded, assembly)).value
