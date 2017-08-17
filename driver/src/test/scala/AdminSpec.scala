@@ -11,10 +11,13 @@ import Common._
 
 import org.specs2.concurrent.{ ExecutionEnv => EE }
 
+
 class IsMasterSpec extends Specification {
   "isMaster" title
 
   import bson.BSONIsMasterCommand._
+
+  args(skipAll=true)
 
   "BSON command" should {
     "be successful" in { implicit ee: EE =>
@@ -104,6 +107,7 @@ class RenameCollectionSpec extends Specification {
 class ReplSetGetStatusSpec extends Specification {
   "replSetGetStatus" title
 
+  args(skipAll=true)
   "BSON command" should {
     "be successful" in { implicit ee: EE =>
       if (replSetOn) {
