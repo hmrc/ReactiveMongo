@@ -11,13 +11,12 @@ import Common._
 
 import org.specs2.concurrent.{ ExecutionEnv => EE }
 
-
 class IsMasterSpec extends Specification {
   "isMaster" title
 
   import bson.BSONIsMasterCommand._
 
-  args(skipAll=true)
+  args(skipAll = true)
 
   "BSON command" should {
     "be successful" in { implicit ee: EE =>
@@ -107,7 +106,7 @@ class RenameCollectionSpec extends Specification {
 class ReplSetGetStatusSpec extends Specification {
   "replSetGetStatus" title
 
-  args(skipAll=true)
+  args(skipAll = true)
   "BSON command" should {
     "be successful" in { implicit ee: EE =>
       if (replSetOn) {
@@ -158,76 +157,78 @@ class ServerStatusSpec extends Specification {
 class ResyncSpec extends Specification {
   "Resync" title
 
-  "Resync BSON command" should {
-    import bson.BSONResyncImplicits._
-
-    if (!replSetOn) {
-      "fail outside ReplicaSet (MongoDB 3+)" in { implicit ee: EE =>
-        connection.database("admin").flatMap(_.runCommand(Resync)) must not(
-          throwA[CommandError]).await(0, timeout)
-      } tag "not_mongo26"
-    }
-    else {
-      "be successful with ReplicaSet (MongoDB 3+)" in { implicit ee: EE =>
-        connection.database("admin").flatMap(_.runCommand(Resync)) must (
-          throwA[CommandError].like {
-            case CommandError.Code(c) => c aka "error code" must_== 95
-          }).await(0, timeout)
-      } tag "not_mongo26"
-
-      "be successful with ReplicaSet (MongoDB 2)" in { implicit ee: EE =>
-        connection.database("admin").flatMap(_.runCommand(Resync)) must (
-          throwA[CommandError].like {
-            case CommandError.Message(msg) =>
-              msg aka "error message" must_== "primaries cannot resync"
-          }).await(0, timeout)
-      } tag "mongo2"
-    }
-  }
+  args(skipAll = true)
+//  "Resync BSON command" should {
+//    import bson.BSONResyncImplicits._
+//
+//    if (!replSetOn) {
+//      "fail outside ReplicaSet (MongoDB 3+)" in { implicit ee: EE =>
+//        connection.database("admin").flatMap(_.runCommand(Resync)) must not(
+//          throwA[CommandError]).await(0, timeout)
+//      } tag "not_mongo26"
+//    }
+//    else {
+//      "be successful with ReplicaSet (MongoDB 3+)" in { implicit ee: EE =>
+//        connection.database("admin").flatMap(_.runCommand(Resync)) must (
+//          throwA[CommandError].like {
+//            case CommandError.Code(c) => c aka "error code" must_== 95
+//          }).await(0, timeout)
+//      } tag "not_mongo26"
+//
+//      "be successful with ReplicaSet (MongoDB 2)" in { implicit ee: EE =>
+//        connection.database("admin").flatMap(_.runCommand(Resync)) must (
+//          throwA[CommandError].like {
+//            case CommandError.Message(msg) =>
+//              msg aka "error message" must_== "primaries cannot resync"
+//          }).await(0, timeout)
+//      } tag "mongo2"
+//    }
+//  }
 }
 
 class ReplSetMaintenanceSpec extends Specification {
   "ReplSetMaintenance" title
 
-  "BSON command" should {
-    import bson.BSONReplSetMaintenanceImplicits._
-
-    // MongoDB 3
-    if (!replSetOn) {
-      "fail outside replicaSet (MongoDB 3+)" in { implicit ee: EE =>
-        connection.database("admin").flatMap(_.runCommand(
-          ReplSetMaintenance(true))) must throwA[CommandError].like {
-          case CommandError.Code(code) => code aka "error code" must_== 76
-        }.await(0, timeout)
-      } tag "not_mongo26"
-    }
-    else {
-      "fail with replicaSet (MongoDB 3+)" in { implicit ee: EE =>
-        connection.database("admin").flatMap(_.runCommand(
-          ReplSetMaintenance(true))) must throwA[CommandError].like {
-          case CommandError.Code(code) => code aka "error code" must_== 95
-        }.await(0, timeout)
-      } tag "not_mongo26"
-    }
-
-    // MongoDB 2.6
-    if (!replSetOn) {
-      "fail outside replicaSet (MongoDB 2.6)" in { implicit ee: EE =>
-        connection.database("admin").flatMap(_.runCommand(
-          ReplSetMaintenance(true))) must throwA[CommandError].await(0, timeout)
-      } tag "mongo2"
-    }
-    else {
-      "fail with replicaSet (MongoDB 2.6)" in { implicit ee: EE =>
-        connection.database("admin").flatMap(_.runCommand(
-          ReplSetMaintenance(true))) must throwA[CommandError].like {
-          case CommandError.Message(msg) =>
-            msg aka "message" must_== "primaries can't modify maintenance mode"
-        }.await(0, timeout)
-      } tag "mongo2"
-    }
-
-  }
+  args(skipAll = true)
+//  "BSON command" should {
+//    import bson.BSONReplSetMaintenanceImplicits._
+//
+//    // MongoDB 3
+//    if (!replSetOn) {
+//      "fail outside replicaSet (MongoDB 3+)" in { implicit ee: EE =>
+//        connection.database("admin").flatMap(_.runCommand(
+//          ReplSetMaintenance(true))) must throwA[CommandError].like {
+//          case CommandError.Code(code) => code aka "error code" must_== 76
+//        }.await(0, timeout)
+//      } tag "not_mongo26"
+//    }
+//    else {
+//      "fail with replicaSet (MongoDB 3+)" in { implicit ee: EE =>
+//        connection.database("admin").flatMap(_.runCommand(
+//          ReplSetMaintenance(true))) must throwA[CommandError].like {
+//          case CommandError.Code(code) => code aka "error code" must_== 95
+//        }.await(0, timeout)
+//      } tag "not_mongo26"
+//    }
+//
+//    // MongoDB 2.6
+//    if (!replSetOn) {
+//      "fail outside replicaSet (MongoDB 2.6)" in { implicit ee: EE =>
+//        connection.database("admin").flatMap(_.runCommand(
+//          ReplSetMaintenance(true))) must throwA[CommandError].await(0, timeout)
+//      } tag "mongo2"
+//    }
+//    else {
+//      "fail with replicaSet (MongoDB 2.6)" in { implicit ee: EE =>
+//        connection.database("admin").flatMap(_.runCommand(
+//          ReplSetMaintenance(true))) must throwA[CommandError].like {
+//          case CommandError.Message(msg) =>
+//            msg aka "message" must_== "primaries can't modify maintenance mode"
+//        }.await(0, timeout)
+//      } tag "mongo2"
+//    }
+//
+//  }
 }
 
 class PingSpecification extends Specification {
