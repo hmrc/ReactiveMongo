@@ -1,7 +1,10 @@
 import sbt._
 import sbt.Keys._
+import sbtassembly.AssemblyKeys.assemblyMergeStrategy
+import sbtassembly.{MergeStrategy, PathList}
 import uk.gov.hmrc.SbtAutoBuildPlugin
 import uk.gov.hmrc.versioning.SbtGitVersioning
+
 import scala.language.postfixOps
 
 object BuildSettings {
@@ -12,6 +15,15 @@ object BuildSettings {
       case (file, path) =>
         path != "logback.xml" && !path.startsWith("toignore") && !path.startsWith("samples")
     }
+  }
+
+  import sbtassembly.AssemblyKeys.assembly
+
+  lazy val mStrat = assemblyMergeStrategy in assembly := {
+    case PathList("META-INF", xs@_*) => MergeStrategy.discard
+    case x =>
+      val oldStrategy = (assemblyMergeStrategy in assembly).value
+      oldStrategy (x)
   }
 
   val buildSettings = Defaults.coreDefaultSettings ++ Seq(
@@ -25,6 +37,7 @@ object BuildSettings {
     scalacOptions in (Compile, doc) ++= Opts.doc.title("ReactiveMongo API"),
     scalacOptions in (Compile, doc) ++= Opts.doc.version(buildVersion),
     shellPrompt := ShellPrompt.buildShellPrompt,
+//    mStrat,
     mappings in (Compile, packageBin) ~= filter,
     mappings in (Compile, packageSrc) ~= filter,
     mappings in (Compile, packageDoc) ~= filter) ++
@@ -103,11 +116,6 @@ object Dependencies {
 
   val findbugs = "com.google.code.findbugs" % "jsr305" % "1.3.9"
 
-  val log4jVersion = "2.0.2"
-  val log4j = Seq("org.apache.logging.log4j" % "log4j-api" % log4jVersion, "org.apache.logging.log4j" % "log4j-core" % log4jVersion)
-
-
-
   val shapelessTest = "com.chuusai" % "shapeless" % "2.3.2" %
     Test cross CrossVersion.binaryMapped {
     case "2.10" => "2.10.5"
@@ -148,6 +156,17 @@ object ReactiveMongoBuild extends Build {
 
   val projectPrefix = "ReactiveMongo"
 
+  import sbtassembly.{
+  AssemblyKeys, PathList, ShadeRule
+  }, AssemblyKeys._
+
+  lazy val mStrat = assemblyMergeStrategy in assembly := {
+    case PathList("META-INF", xs@_*) => MergeStrategy.discard
+    case x =>
+      val oldStrategy = (assemblyMergeStrategy in assembly).value
+      oldStrategy (x)
+  }
+
   lazy val reactivemongo =
     Project(
       s"$projectPrefix-Root",
@@ -179,10 +198,6 @@ object ReactiveMongoBuild extends Build {
     }
   } andThen BuildSettings.filter
 
-
-  import sbtassembly.{
-  AssemblyKeys, MergeStrategy, PathList, ShadeRule
-  }, AssemblyKeys._
 
   lazy val shaded = Project(
     s"$projectPrefix-Shaded",
@@ -226,8 +241,8 @@ object ReactiveMongoBuild extends Build {
         IO.move(listenerClass, extDir / classFile)
       },
       driverCleanup <<= driverCleanup.triggeredBy(compile in Compile),
-      pomPostProcess := transformPomDependencies { _ => None },
-      makePom <<= makePom.dependsOn(assembly),
+//      pomPostProcess := transformPomDependencies { _ => None },
+//      makePom <<= makePom.dependsOn(assembly),
       unmanagedJars in Compile := {
         val shadedDir = (target in shaded).value
         val shadedJar = (assemblyJarName in (shaded, assembly)).value
@@ -272,8 +287,32 @@ object ReactiveMongoBuild extends Build {
     s"$projectPrefix-JMX",
     file("jmx"), settings = buildSettings).
     settings(
+      pomPostProcess := providedInternalDeps,
       testOptions in Test += Tests.Cleanup(commonCleanup),
       libraryDependencies ++= Seq(specs) ++ logApi).dependsOn(driver)
+
+  private val providedInternalDeps: XmlNode => XmlNode = {
+    import scala.xml.NodeSeq
+    import scala.xml.transform.{ RewriteRule, RuleTransformer }
+
+    val asProvided = new RuleTransformer(new RewriteRule {
+      override def transform(node: XmlNode): NodeSeq = node match {
+        case e: XmlElem if e.label == "scope" =>
+          NodeSeq.Empty
+
+        case _ => node
+      }
+    })
+
+    transformPomDependencies { dep: scala.xml.Elem =>
+      if ((dep \ "groupId").text == "org.reactivemongo") {
+        asProvided.transform(dep).headOption.collectFirst {
+          case e: XmlElem => e.copy(
+            child = e.child :+ <scope>provided</scope>)
+        }
+      } else Some(dep)
+    }
+  }
 
   private val commonCleanup: ClassLoader => Unit = { cl =>
     import scala.language.reflectiveCalls
