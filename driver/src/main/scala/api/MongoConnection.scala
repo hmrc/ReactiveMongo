@@ -508,6 +508,9 @@ object MongoConnection {
           case ("authSource", v) => unsupported -> result.
             copy(authSource = Some(v))
 
+          case ("authMode", "x509") => unsupported -> result.
+            copy(authMode = X509Authentication)
+
           case ("authMode", "mongocr") => unsupported -> result.
             copy(authMode = CrAuthentication)
 

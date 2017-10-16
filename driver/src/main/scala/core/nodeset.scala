@@ -506,6 +506,8 @@ object Authenticating {
       case ScramSha1Authenticating(db, user, pass, _, _, _, _, _) =>
         Some((db, user, pass))
 
+      case X509Authenticating(db, user) => Some((db, user, ""))
+
       case _ =>
         None
     }
@@ -526,6 +528,10 @@ case class ScramSha1Authenticating(
 
   override def toString: String =
     s"Authenticating($db, $user})"
+}
+
+case class X509Authenticating(db: String, user: String) extends Authenticating {
+  override def password = ???
 }
 
 case class Authenticated(db: String, user: String) extends Authentication
