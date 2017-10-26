@@ -362,9 +362,7 @@ private[core] case class X509Authenticate(user: String) extends Command[Successf
 
   override def makeDocuments = BSONDocument(
     "authenticate" -> BSONInteger(1),
-    "mechanism" -> BSONString("MONGODB-X509"),
-    "user" -> BSONString(user)
-  )
+    "mechanism" -> BSONString("MONGODB-X509"))
 
   override val ResultMaker = X509Authenticate
 }

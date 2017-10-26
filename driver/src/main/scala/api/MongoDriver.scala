@@ -2,23 +2,14 @@ package reactivemongo.api
 
 import java.util.concurrent.atomic.AtomicLong
 
-import scala.util.{ Try, Failure, Success }
-
-import scala.concurrent.{ Await, Future }
-import scala.concurrent.duration.{ Duration, FiniteDuration, SECONDS }
-
+import scala.util.{Failure, Success, Try}
+import scala.concurrent.{Await, Future}
+import scala.concurrent.duration.{Duration, FiniteDuration, SECONDS}
 import com.typesafe.config.Config
-
 import akka.util.Timeout
-import akka.actor.{ Actor, ActorRef, ActorSystem, Props, Terminated }
+import akka.actor.{Actor, ActorRef, ActorSystem, Props, Terminated}
 import akka.pattern.ask
-
-import reactivemongo.core.actors.{
-  Close,
-  LegacyDBSystem,
-  MongoDBSystem,
-  StandardDBSystem
-}
+import reactivemongo.core.actors._
 import reactivemongo.core.nodeset.Authenticate
 import reactivemongo.util.LazyLogger
 
@@ -51,7 +42,7 @@ class MongoDriver(
     TimedSystemControl
   }
 
-  /* MongoDriver always uses its own ActorSystem 
+  /* MongoDriver always uses its own ActorSystem
    * so it can have complete control separate from other
    * Actor Systems in the application
    */
@@ -144,6 +135,9 @@ class MongoDriver(
       case CrAuthentication => new LegacyDBSystem(
         supervisorName, nm, nodes, authentications, options
       )
+
+      case X509Authentication => new StandardDBSystemWithX509(
+        supervisorName, nm, nodes, authentications, options)
 
       case _ => new StandardDBSystem(
         supervisorName, nm, nodes, authentications, options

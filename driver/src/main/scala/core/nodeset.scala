@@ -506,7 +506,8 @@ object Authenticating {
       case ScramSha1Authenticating(db, user, pass, _, _, _, _, _) =>
         Some((db, user, pass))
 
-      case X509Authenticating(db, user) => Some((db, user, ""))
+      case X509Authenticating(db, user) =>
+        Some((db, user, ""))
 
       case _ =>
         None

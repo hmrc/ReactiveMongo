@@ -6,16 +6,16 @@
     </Console>
   </appenders>
   <loggers>
-    <logger name="shaded.netty" level="ERROR" />
-    <logger name="reactivemongo.api.commands" level="ERROR" />
-    <logger name="reactivemongo.api.Cursor" level="OFF" />
-    <logger name="reactivemongo.api.Failover2" level="OFF" />
-    <logger name="reactivemongo.api.MongoConnection" level="OFF" />
+    <logger name="shaded.netty" level="DEBUG" />
+    <logger name="reactivemongo.api.commands" level="DEBUG" />
+    <logger name="reactivemongo.api.Cursor" level="DEBUG" />
+    <logger name="reactivemongo.api.Failover2" level="DEBUG" />
+    <logger name="reactivemongo.api.MongoConnection" level="DEBUG" />
 
-    <logger name="reactivemongo.test.NettyProxy" level="ERROR" />
-    <logger name="reactivemongo.core" level="OFF" />
+    <logger name="reactivemongo.test.NettyProxy" level="DEBUG" />
+    <logger name="reactivemongo.core" level="DEBUG" />
 
-    <root level="WARN">
+    <root level="DEBUG">
       <appender-ref ref="Console"/>
     </root>
   </loggers>

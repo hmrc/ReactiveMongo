@@ -1,11 +1,6 @@
 import scala.concurrent.{ Await, ExecutionContext }
 import scala.concurrent.duration._
-import reactivemongo.api.{
-  CrAuthentication,
-  FailoverStrategy,
-  MongoDriver,
-  MongoConnectionOptions
-}
+import reactivemongo.api._
 
 object Common {
   val logger = reactivemongo.util.LazyLogger("tests")
@@ -16,8 +11,11 @@ object Common {
       case _      => false
     }
 
-  val crMode = Option(System getProperty "test.authMode").
-    filter(_ == "cr").map(_ => CrAuthentication)
+  val authMode = Option(System.getProperty("test.authMode")) flatMap {
+    case "cr"   => Some(CrAuthentication)
+    case "x509" => Some(X509Authentication)
+    case _      => None
+  }
 
   val primaryHost =
     Option(System getProperty "test.primaryHost").getOrElse("localhost:27017")
@@ -46,7 +44,7 @@ object Common {
       } else a
     }
 
-    crMode.fold(b) { mode => b.copy(authMode = mode) }
+    authMode.fold(b) { mode => b.copy(authMode = mode) }
   }
 
   lazy val connection = driver.connection(List(primaryHost), DefaultOptions)
@@ -134,10 +132,10 @@ object Common {
     import ExecutionContext.Implicits.global
 
     val _db = connection.database(commonDb, failoverStrategy).
-      flatMap { d => d.drop.map(_ => d) }
+      flatMap { d => d.connection.authenticate(d.name, "", "").flatMap(_ => d.drop.map(_ => d)) }
 
     Await.result(_db, timeout) -> Await.result(
-      slowConnection.database(commonDb, slowFailover), slowTimeout
+      slowConnection.database(commonDb, slowFailover).flatMap { d => d.connection.authenticate(d.name, "", "").map(_ => d) }, slowTimeout
     )
   }
 
