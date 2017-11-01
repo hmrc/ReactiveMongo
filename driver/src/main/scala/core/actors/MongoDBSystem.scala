@@ -19,46 +19,14 @@ import java.net.InetSocketAddress
 
 import scala.concurrent.Promise
 import scala.util.{ Failure, Success, Try }
-
 import akka.actor.{ Actor, ActorRef, Cancellable }
-
 import shaded.netty.channel.{ ChannelFuture, ChannelFutureListener }
-import shaded.netty.channel.group.{
-  ChannelGroupFuture,
-  ChannelGroupFutureListener,
-  DefaultChannelGroup
-}
-
+import shaded.netty.channel.group.{ ChannelGroupFuture, ChannelGroupFutureListener, DefaultChannelGroup }
 import reactivemongo.util.LazyLogger
 import reactivemongo.core.errors.GenericDriverException
-import reactivemongo.core.protocol.{
-  GetMore,
-  Query,
-  QueryFlags,
-  KillCursors,
-  MongoWireVersion,
-  Request,
-  RequestMaker,
-  Response
-}
-import reactivemongo.core.commands.{
-  CommandError,
-  SuccessfulAuthentication
-}
-import reactivemongo.core.nodeset.{
-  Authenticate,
-  Authenticated,
-  Authenticating,
-  ChannelFactory,
-  Connection,
-  ConnectionStatus,
-  Node,
-  NodeSet,
-  NodeSetInfo,
-  NodeStatus,
-  PingInfo,
-  ProtocolMetadata
-}
+import reactivemongo.core.protocol._
+import reactivemongo.core.commands.{ CommandError, SuccessfulAuthentication }
+import reactivemongo.core.nodeset._
 import reactivemongo.api.{ MongoConnectionOptions, ReadPreference }
 import reactivemongo.api.commands.LastError
 import external.reactivemongo.ConnectionListener
