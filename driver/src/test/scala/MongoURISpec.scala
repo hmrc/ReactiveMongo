@@ -1,5 +1,5 @@
-import reactivemongo.api.{MongoConnection, MongoConnectionOptions, ScramSha1Authentication, X509Authentication}
-import MongoConnection.{ParsedURI, parseURI}
+import reactivemongo.api.{ MongoConnection, MongoConnectionOptions, ScramSha1Authentication, X509Authentication }
+import MongoConnection.{ ParsedURI, parseURI }
 import reactivemongo.core.nodeset.Authenticate
 import reactivemongo.api.commands.WriteConcern
 
@@ -121,7 +121,7 @@ class MongoURISpec extends org.specs2.mutable.Specification {
           ignoredOptions = List("foo")))
     }
 
-    val withAuthParamAndSource = "mongodb://user123:;qGu:je/LX}nN\\8@host1:27018,host2:27019,host3:27020/somedb?foo=bar&authenticationDatabase=authdb"
+    val withAuthParamAndSource = "mongodb://user123:;qGu:je/LX}nN\\8@host1:27018,host2:27019,host3:27020/somedb?foo=bar&authSource=authdb"
 
     s"parse $withAuthParamAndSource with success" in {
       parseURI(withAuthParamAndSource) must beSuccessfulTry(

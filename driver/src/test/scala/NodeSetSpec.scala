@@ -55,8 +55,7 @@ class NodeSetSpec extends org.specs2.mutable.Specification
 
               waitIsAvailable(con, failoverStrategy).map(_ => true).recover {
                 case reason: PrimaryUnavailableException if (
-                  reason.getMessage.indexOf(name) != -1
-                ) => false
+                  reason.getMessage.indexOf(name) != -1) => false
               } must beFalse.await(1, timeout)
             }
           }
@@ -84,8 +83,7 @@ class NodeSetSpec extends org.specs2.mutable.Specification
 
       "without the primary if slave ok" >> {
         org.specs2.specification.core.Fragments.foreach[ReadPreference](
-          Seq(ReadPreference.primaryPreferred, ReadPreference.secondary)
-        ) { readPref =>
+          Seq(ReadPreference.primaryPreferred, ReadPreference.secondary)) { readPref =>
             s"using $readPref" in { implicit ee: EE =>
               val opts = MongoConnectionOptions(readPreference = readPref)
 
@@ -119,10 +117,9 @@ class NodeSetSpec extends org.specs2.mutable.Specification
                 before <- isAvailable(con)
                 _ = conMon ! PrimaryUnavailable
                 after <- waitIsAvailable(
-                  con, failoverStrategy
-                ).map(_ => true).recover {
-                  case _ => false
-                }
+                  con, failoverStrategy).map(_ => true).recover {
+                    case _ => false
+                  }
               } yield before -> after).andThen { case _ => con.close() }
 
               test must beEqualTo(true -> false).await(1, timeout)
@@ -132,8 +129,7 @@ class NodeSetSpec extends org.specs2.mutable.Specification
 
       "without the primary if slave ok" in { implicit ee: EE =>
         val opts = MongoConnectionOptions(
-          readPreference = ReadPreference.primaryPreferred
-        )
+          readPreference = ReadPreference.primaryPreferred)
 
         withCon(opts) { (con, name) =>
           withConMon(name) { conMon =>
@@ -144,10 +140,9 @@ class NodeSetSpec extends org.specs2.mutable.Specification
               before <- isAvailable(con)
               _ = conMon ! SetUnavailable
               after <- waitIsAvailable(
-                con, failoverStrategy
-              ).map(_ => true).recover {
-                case _ => false
-              }
+                con, failoverStrategy).map(_ => true).recover {
+                  case _ => false
+                }
             } yield before -> after).andThen { case _ => con.close() }
 
             test must beEqualTo(true -> false).await(1, timeout)
@@ -192,13 +187,10 @@ class NodeSetSpec extends org.specs2.mutable.Specification
       standardDBSystem(
         supervisorName, poolName,
         nodes,
-        Seq(Authenticate(Common.commonDb, "test", "password")), options
-      ), poolName
-    )
+        Seq(Authenticate(Common.commonDb, "test", "password")), options), poolName)
 
     def connection = addConnection(
-      drv, poolName, nodes, options, mongosystem
-    ).mapTo[MongoConnection]
+      drv, poolName, nodes, options, mongosystem).mapTo[MongoConnection]
 
     connection.flatMap { con =>
       f(con, mongosystem).andThen {
@@ -213,11 +205,9 @@ class NodeSetSpec extends org.specs2.mutable.Specification
     val con = md.connection(
       nodes,
       authentications = Seq(Authenticate(
-        Common.commonDb, "test", "password"
-      )),
+        Common.commonDb, "test", "password")),
       options = opts,
-      name = Some(name)
-    )
+      name = Some(name))
 
     f(con, name)
   }

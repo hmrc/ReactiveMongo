@@ -61,10 +61,8 @@ trait UnresponsiveSecondarySpec { parent: NodeSetSpec =>
                   withChannel(cid, nettyHandler(ref)(hfun)) { chan =>
                     n.copy(
                       authenticated = Set(
-                        Authenticated(Common.commonDb, "test")
-                      ),
-                      connections = Vector(connectedCon(chan))
-                    )
+                        Authenticated(Common.commonDb, "test")),
+                      connections = Vector(connectedCon(chan)))
                   }
                 }
               }
@@ -86,10 +84,9 @@ trait UnresponsiveSecondarySpec { parent: NodeSetSpec =>
                     n.copy(pingInfo = n.pingInfo.copy(
                       lastIsMasterId = 1,
                       lastIsMasterTime = (
-                      System.currentTimeMillis() - PingInfo.pingTimeout
-                    )
-                    ))
-                  } else n
+                        System.currentTimeMillis() - PingInfo.pingTimeout)))
+                  }
+                  else n
                 }
               }
 
@@ -101,9 +98,9 @@ trait UnresponsiveSecondarySpec { parent: NodeSetSpec =>
               (_: Vector[Node]).exists { node =>
                 if (node.name startsWith "node2:") {
                   node.status == NodeStatus.Unknown
-                } else false
-              }
-            )
+                }
+                else false
+              })
 
             (before, state1, unregistered, nsState)
           }).map {
@@ -113,8 +110,7 @@ trait UnresponsiveSecondarySpec { parent: NodeSetSpec =>
 
                 st1 must_== Set[(String, NodeStatus)](
                   "node1:27017" -> NodeStatus.Primary,
-                  "node2:27017" -> NodeStatus.Secondary
-                )
+                  "node2:27017" -> NodeStatus.Secondary)
               } and {
                 // Node2 has been detected as unresponsive
 
@@ -124,8 +120,7 @@ trait UnresponsiveSecondarySpec { parent: NodeSetSpec =>
 
                 st2 must_== Set[(String, NodeStatus)](
                   "node1:27017" -> NodeStatus.Primary,
-                  "node2:27017" -> NodeStatus.Unknown
-                )
+                  "node2:27017" -> NodeStatus.Unknown)
               }
             }
           }.andThen {
@@ -154,8 +149,7 @@ trait UnresponsiveSecondarySpec { parent: NodeSetSpec =>
     channel = channel,
     status = ConnectionStatus.Connected,
     authenticated = Set(Authenticated(Common.commonDb, "test")),
-    authenticating = None
-  )
+    authenticating = None)
 
   private def isPrim = BSONDocument(
     "ok" -> 1,
@@ -167,8 +161,7 @@ trait UnresponsiveSecondarySpec { parent: NodeSetSpec =>
     "setVersion" -> 0,
     "secondary" -> false,
     "hosts" -> nodes,
-    "primary" -> "node1:27017"
-  )
+    "primary" -> "node1:27017")
 
   private def isSeco = BSONDocument(
     "ok" -> 1,
@@ -180,19 +173,16 @@ trait UnresponsiveSecondarySpec { parent: NodeSetSpec =>
     "setVersion" -> 0,
     "secondary" -> true, // !!
     "hosts" -> nodes,
-    "primary" -> "node1:27017"
-  )
+    "primary" -> "node1:27017")
 
   @volatile private var secAvail = true
 
   private def nettyHandler(ref: TestActorRef[StandardDBSystem])(isMasterResp: Boolean => Option[BSONDocument]): ChannelEvent => Unit = {
     case evt @ (msg: shaded.netty.channel.DownstreamMessageEvent) if (
-      msg.getMessage.isInstanceOf[Request]
-    ) => {
+      msg.getMessage.isInstanceOf[Request]) => {
       val req = msg.getMessage.asInstanceOf[Request]
       val bson = ChannelBufferReadableBuffer.document(
-        req.documents.merged
-      )
+        req.documents.merged)
 
       bson.getAs[reactivemongo.bson.BSONNumberLike]("ismaster") match {
         case Some(num) if (num.toInt == 1) => {
@@ -201,8 +191,7 @@ trait UnresponsiveSecondarySpec { parent: NodeSetSpec =>
               resp,
               reqID = isMasterReqId,
               respTo = req.requestID,
-              chanId = evt.getChannel.getId
-            )
+              chanId = evt.getChannel.getId)
           }
         }
 
@@ -216,8 +205,7 @@ trait UnresponsiveSecondarySpec { parent: NodeSetSpec =>
   private def node1Handler(secAvail: Boolean): Option[BSONDocument] = {
     def prim = if (secAvail) isPrim else {
       isPrim -- "hosts" ++ (
-        "hosts" -> nodes.filter(_ startsWith "node1")
-      )
+        "hosts" -> nodes.filter(_ startsWith "node1"))
     }
 
     Option(prim)

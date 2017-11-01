@@ -39,7 +39,8 @@ trait WritableBuffer { self =>
       if (buf.readable > 1024) {
         writeBytes(buf.readArray(1024))
         write(buf)
-      } else writeBytes(buf.readArray(buf.readable))
+      }
+      else writeBytes(buf.readArray(buf.readable))
     }
 
     write(buffer.slice(buffer.readable))
@@ -144,7 +145,8 @@ trait ReadableBuffer {
 
     if (byte == 0x00) {
       new String(array.toArray, "UTF-8")
-    } else readCString(array += byte)
+    }
+    else readCString(array += byte)
   }
 
   def duplicate(): ReadableBuffer
@@ -156,8 +158,7 @@ import java.nio.{ ByteBuffer, ByteOrder }, ByteOrder._
 
 /** An array-backed readable buffer. */
 case class ArrayReadableBuffer private (
-    bytebuffer: ByteBuffer
-) extends ReadableBuffer {
+    bytebuffer: ByteBuffer) extends ReadableBuffer {
 
   bytebuffer.order(LITTLE_ENDIAN)
 
@@ -203,8 +204,7 @@ object ArrayReadableBuffer {
 
 /** An array-backed writable buffer. */
 class ArrayBSONBuffer protected[buffer] (
-    protected val buffer: ArrayBuffer[Byte]
-) extends WritableBuffer {
+    protected val buffer: ArrayBuffer[Byte]) extends WritableBuffer {
   def index = buffer.length // useless
 
   def bytebuffer(size: Int) = {
