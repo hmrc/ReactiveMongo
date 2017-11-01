@@ -18,7 +18,8 @@ object Common {
 
     val b = if (Option(System getProperty "test.enableSSL").exists(_ == "true")) {
       a.copy(sslEnabled = true, sslAllowsInvalidCert = true)
-    } else a
+    }
+    else a
 
     crMode.fold(b) { mode => b.copy(authMode = mode) }
   }
@@ -47,5 +48,6 @@ object Common {
 
   def close(): Unit = try {
     driver.close()
-  } catch { case _: Throwable => () }
+  }
+  catch { case _: Throwable => () }
 }
