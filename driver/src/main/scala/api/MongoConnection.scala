@@ -15,44 +15,24 @@
  */
 package reactivemongo.api
 
+import java.io.FileInputStream
+import java.security.KeyStore
+import java.security.cert.{ CertificateFactory, X509Certificate }
 import java.util.concurrent.TimeUnit.MILLISECONDS
+import javax.naming.ldap.LdapName
+import javax.net.ssl.KeyManagerFactory
 
 import scala.util.Try
-import scala.util.control.{ NonFatal, NoStackTrace }
-
-import scala.concurrent.{
-  Await,
-  ExecutionContext,
-  Future,
-  Promise
-}
+import scala.util.control.{ NoStackTrace, NonFatal }
+import scala.concurrent.{ Await, ExecutionContext, Future, Promise }
 import scala.concurrent.duration.{ Duration, FiniteDuration }
-
 import akka.util.Timeout
 import akka.actor.{ Actor, ActorRef, ActorSystem, Props }
 import akka.pattern.{ after, ask }
-
-import reactivemongo.core.actors.{
-  AuthRequest,
-  CheckedWriteRequestExpectingResponse,
-  Close,
-  Closed,
-  Exceptions,
-  PrimaryAvailable,
-  PrimaryUnavailable,
-  RegisterMonitor,
-  RequestMakerExpectingResponse,
-  SetAvailable,
-  SetUnavailable
-}
+import reactivemongo.core.actors.{ AuthRequest, CheckedWriteRequestExpectingResponse, Close, Closed, Exceptions, PrimaryAvailable, PrimaryUnavailable, RegisterMonitor, RequestMakerExpectingResponse, SetAvailable, SetUnavailable }
 import reactivemongo.core.errors.ConnectionException
 import reactivemongo.core.nodeset.{ Authenticate, ProtocolMetadata }
-import reactivemongo.core.protocol.{
-  CheckedWriteRequest,
-  MongoWireVersion,
-  RequestMaker,
-  Response
-}
+import reactivemongo.core.protocol.{ CheckedWriteRequest, MongoWireVersion, RequestMaker, Response }
 import reactivemongo.core.commands.SuccessfulAuthentication
 import reactivemongo.api.commands.WriteConcern
 import reactivemongo.util.LazyLogger
@@ -440,7 +420,7 @@ object MongoConnection {
       }
       else {
         val WithAuth = """([^:]+):([^@]*)@(.+)""".r
-        val WithAuthNoPassword = """([^@]+)@(.+)""".r
+        val WithAuthNoPassword = """([^:]+)@(.+)""".r
 
         useful match {
           case WithAuth(user, pass, hostsPortsAndDbName) => {
@@ -448,6 +428,10 @@ object MongoConnection {
 
             db.fold[ParsedURI](throw new URIParsingException(s"Could not parse URI '$uri': authentication information found but no database name in URI")) { database =>
               val (unsupportedKeys, options) = opts
+
+              if (options.authMode == X509Authentication && pass.nonEmpty) {
+                throw new URIParsingException("You should not provide a password when authenticating with X509 authentication")
+              }
 
               ParsedURI(hosts, options, unsupportedKeys, Some(database), Some(Authenticate.apply(options.authSource.getOrElse(database), user, pass)))
             }
@@ -457,9 +441,11 @@ object MongoConnection {
 
             db.fold[ParsedURI](throw new URIParsingException(s"Could not parse URI '$uri': authentication information found but no database name in URI")) { database =>
 
-              ParsedURI(hosts, options, unsupportedKeys, Some(database),
-                Some(Authenticate(options.authSource.
-                  getOrElse(database), user, "")))
+              options.authMode match {
+                case _ => ParsedURI(hosts, options, unsupportedKeys, Some(database),
+                  Some(Authenticate(options.authSource.
+                    getOrElse(database), user, "")))
+              }
             }
           }
           case _ => throw new URIParsingException(s"Could not parse URI '$uri'")

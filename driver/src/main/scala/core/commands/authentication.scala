@@ -347,9 +347,16 @@ object CrAuthenticate extends BSONCommandResultMaker[SuccessfulAuthentication] {
 
 private[core] case class X509Authenticate(user: String) extends Command[SuccessfulAuthentication] {
 
+  private val userNameDocument = if (user.isEmpty) {
+    BSONDocument()
+  }
+  else {
+    BSONDocument("user" -> BSONString(user))
+  }
+
   override def makeDocuments = BSONDocument(
     "authenticate" -> BSONInteger(1),
-    "mechanism" -> BSONString("MONGODB-X509"))
+    "mechanism" -> BSONString("MONGODB-X509")) ++ userNameDocument
 
   override val ResultMaker = X509Authenticate
 }
