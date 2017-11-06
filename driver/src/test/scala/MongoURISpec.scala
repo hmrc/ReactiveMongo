@@ -109,14 +109,14 @@ class MongoURISpec extends org.specs2.mutable.Specification {
           ignoredOptions = List("foo")))
     }
 
-    val withAuthModeX509WithUser = "mongodb://username@host1:27018,host2:27019,host3:27020/somedb?foo=bar&authMode=x509"
+    val withAuthModeX509WithUser = "mongodb://username@test.com,CN=127.0.0.1,OU=TEST_CLIENT,O=TEST_CLIENT,L=LONDON,ST=LONDON,C=UK@host1:27018,host2:27019,host3:27020/somedb?foo=bar&authMode=x509"
 
     s"parse $withAuthModeX509WithUser with success" in {
       parseURI(withAuthModeX509WithUser) must beSuccessfulTry(
         ParsedURI(
           hosts = List("host1" -> 27018, "host2" -> 27019, "host3" -> 27020),
           db = Some("somedb"),
-          authenticate = Some(Authenticate("somedb", "username", "")),
+          authenticate = Some(Authenticate("somedb", "username@test.com,CN=127.0.0.1,OU=TEST_CLIENT,O=TEST_CLIENT,L=LONDON,ST=LONDON,C=UK", "")),
           options = MongoConnectionOptions(authMode = X509Authentication),
           ignoredOptions = List("foo")))
     }
