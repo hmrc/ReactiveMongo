@@ -25,7 +25,7 @@ import shaded.netty.channel.group.{ ChannelGroupFuture, ChannelGroupFutureListen
 import reactivemongo.util.LazyLogger
 import reactivemongo.core.errors.GenericDriverException
 import reactivemongo.core.protocol._
-import reactivemongo.core.commands.{ CommandError, SuccessfulAuthentication }
+import reactivemongo.core.commands.{ CommandError, SuccessfulAuthentication, X509Authenticate }
 import reactivemongo.core.nodeset._
 import reactivemongo.api.{ MongoConnectionOptions, ReadPreference }
 import reactivemongo.api.commands.LastError
@@ -1213,7 +1213,7 @@ trait MongoDBSystem extends Actor {
   }
 
   // Auth Methods
-  private object AuthRequestsManager {
+  protected object AuthRequestsManager {
     var authRequests =
       Map.empty[Authenticate, List[Promise[SuccessfulAuthentication]]]
 
