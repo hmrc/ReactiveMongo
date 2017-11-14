@@ -76,9 +76,9 @@ There are quite a few fields but you can leave some blank
 For some fields there will be a default value,
 If you enter '.', the field will be left blank.
 -----
-Country Name (2 letter code) [AU]:HU
-State or Province Name (full name) [Some-State]:BUDAPEST
-Locality Name (eg, city) []:BUDAPEST
+Country Name (2 letter code) [AU]:UK
+State or Province Name (full name) [Some-State]:LONDON
+Locality Name (eg, city) []:LONDON
 Organization Name (eg, company) [Internet Widgits Pty Ltd]:TEST_CLIENT
 Organizational Unit Name (eg, section) []:TEST_CLIENT
 Common Name (e.g. server FQDN or YOUR name) []:127.0.0.1
