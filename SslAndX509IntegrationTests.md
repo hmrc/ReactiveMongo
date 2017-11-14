@@ -59,7 +59,7 @@ openssl req -new -x509 -days 365 -out client-cert.crt -keyout client-cert.key
 ```
 We will use a different email (`testclient@testclient.com`), different passphrase(`testclient`) and different `O` and `OU` for our client certificate so that we have enough differentiators. 
 
-Again, be sure you use the same fields as we do below baring in mind the passphrase is `testclient`:
+Again, be sure you use the same fields as we do below bearing in mind the passphrase is `testclient`:
 
 ```sh
 Generating a 2048 bit RSA private key
@@ -123,13 +123,13 @@ If you want the logs to be printed out to your terminal, then remove the `system
 
 #### Step 4 - Launch MongoDB 
 
-In a seperate terminal window, launch `MongoDB` with the following command:
+In a separate terminal window, launch `MongoDB` with the following command:
 
 ```sh
 mongod --config mongodb-ssl.conf
 ```
 
-and finally to make sure that MongoDB has launched, in a seperate window, tail the logs: `tail -f ~/.mongossl/log/mongo.log`. If all goes well, you should see logs similar to this:
+and finally to make sure that MongoDB has launched, in a separate window, tail the logs: `tail -f ~/.mongossl/log/mongo.log`. If all goes well, you should see logs similar to this:
 
 ```sh
 2017-11-14T13:54:51.537+0000 I CONTROL  [initandlisten] MongoDB starting : pid=10439 port=27017 dbpath=/Users/bob/.mongossl/data 64-bit host=Bobs-MacBook-Pro.local
@@ -159,7 +159,7 @@ mongo  --ssl --sslCAFile ~/.mongossl/mongodb.pem --sslPEMKeyFile ~/.mongossl/cli
 
 You should be in. If you execute the `show dbs` command in MongoDB, you should be able to to see a list of your databases. 
 
-NOTE: You may get the following error if you have `clusterAuthMode` set to `x509` in your configuration and you have not authenticated agains the certificate:
+NOTE: You may get the following error if you have `clusterAuthMode` set to `x509` in your configuration and you have not authenticated against the certificate:
 
 ```sh
 2017-11-14T14:16:40.943+0000 E QUERY    [thread1] Error: listDatabases failed:{
@@ -209,7 +209,7 @@ Now you need to pass in three VM parameters to any application that runs Reactiv
 - javax.net.ssl.keyStoreType
     + This is to specify the keystore type. Must be set to JKS.
 
-An example of running tests would be to run the following command, agian assuming macOS operating system and username `bob`:
+An example of running tests would be to run the following command, again assuming macOS operating system and username `bob`:
 
 ```sh
 sbt -Djavax.net.ssl.keyStore=/Users/bob/.mongossl/keystore.jks -Djavax.net.ssl.keyStorePassword=test_client -Djavax.net.ssl.keyStoreType=JKS test
