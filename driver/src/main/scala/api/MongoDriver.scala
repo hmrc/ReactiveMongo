@@ -9,7 +9,14 @@ import com.typesafe.config.Config
 import akka.util.Timeout
 import akka.actor.{ Actor, ActorRef, ActorSystem, Props, Terminated }
 import akka.pattern.ask
-import reactivemongo.core.actors._
+
+import reactivemongo.core.actors.{
+  Close,
+  LegacyDBSystem,
+  MongoDBSystem,
+  StandardDBSystem,
+  StandardDBSystemWithX509
+}
 import reactivemongo.core.nodeset.Authenticate
 import reactivemongo.util.LazyLogger
 

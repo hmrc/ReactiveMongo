@@ -12,6 +12,7 @@ private[reactivemongo] trait MongoX509Authentication { system: MongoDBSystem =>
   import MongoDBSystem.logger
 
   var x509Steps = 0
+  val maxRetries = 1
 
   protected final def sendAuthenticate(connection: Connection, nextAuth: Authenticate): Connection = {
     connection.send(X509Authenticate(nextAuth.user)("$external").maker(RequestId.authenticate.next))
@@ -24,7 +25,7 @@ private[reactivemongo] trait MongoX509Authentication { system: MongoDBSystem =>
     case response: Response if RequestId.authenticate accepts response =>
       logger.debug(s"AUTH: got authenticated response! ${response.info.channelId}")
       val message = response.documents.toString(0, 87, Charset.defaultCharset())
-      if (x509Steps < 2) {
+      if (x509Steps <= maxRetries) {
         x509Steps += 1
         if (message.toLowerCase.contains("failed")) {
           val failedMsg = "Failed to authenticate with X509 authentication. Either does not match certificate or one of the two does not exist"

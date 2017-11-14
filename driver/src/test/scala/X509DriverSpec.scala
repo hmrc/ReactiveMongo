@@ -28,7 +28,6 @@ class X509DriverSpec extends org.specs2.mutable.Specification {
     lazy val connection = drv.connection(
       List(primaryHost), options = conOpts)
     val slowOpts = SlowOptions.copy(nbChannelsPerNode = 1, authMode = X509Authentication)
-    lazy val slowConnection = drv.connection(List(slowPrimary), slowOpts)
 
     val dbName = "specs2-test-x509-auth"
     def db_(implicit ee: ExecutionContext) =
@@ -45,7 +44,7 @@ class X509DriverSpec extends org.specs2.mutable.Specification {
                 _("testcol").insert(BSONDocument("foo" -> "bar"))
               }.map(_ => {}) must beEqualTo({}).await(1, timeout * 2)
             }
-      } tag "not_mongo26"
+      } tag "not_mongo26, x509"
     }
 
     "not be successful with wrong credentials" >> {
@@ -54,7 +53,7 @@ class X509DriverSpec extends org.specs2.mutable.Specification {
           aka("authentication") must throwA[FailedAuthentication].
           await(1, 2 minutes)
 
-      } tag "not_mongo26"
+      } tag "not_mongo26, x509"
 
     }
 
@@ -75,13 +74,13 @@ class X509DriverSpec extends org.specs2.mutable.Specification {
             con.askClose()(timeout) must not(throwA[Exception]).
               await(1, timeout)
           }
-      } tag "not_mongo26"
+      } tag "not_mongo26, x509"
 
     }
 
     "driver shutdown" in { // mainly to ensure the test driver is closed
       drv.close(timeout) must not(throwA[Exception])
-    } tag "not_mongo26"
+    } tag "not_mongo26, x509"
 
     "fail on DB without authentication" >> {
       val auth = Authenticate(Common.commonDb, "test", "password")
@@ -106,7 +105,7 @@ class X509DriverSpec extends org.specs2.mutable.Specification {
               }
           }.await(1, timeout)
 
-      } tag "not_mongo26"
+      } tag "not_mongo26, x509"
     }
   }
 

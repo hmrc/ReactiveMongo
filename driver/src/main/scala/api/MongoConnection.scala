@@ -15,27 +15,23 @@
  */
 package reactivemongo.api
 
-import java.io.FileInputStream
-import java.security.KeyStore
-import java.security.cert.{ CertificateFactory, X509Certificate }
 import java.util.concurrent.TimeUnit.MILLISECONDS
-import javax.naming.ldap.LdapName
-import javax.net.ssl.KeyManagerFactory
 
-import scala.util.Try
-import scala.util.control.{ NoStackTrace, NonFatal }
-import scala.concurrent.{ Await, ExecutionContext, Future, Promise }
-import scala.concurrent.duration.{ Duration, FiniteDuration }
+import akka.actor.{Actor, ActorRef, ActorSystem, Props}
+import akka.pattern.{after, ask}
 import akka.util.Timeout
-import akka.actor.{ Actor, ActorRef, ActorSystem, Props }
-import akka.pattern.{ after, ask }
-import reactivemongo.core.actors.{ AuthRequest, CheckedWriteRequestExpectingResponse, Close, Closed, Exceptions, PrimaryAvailable, PrimaryUnavailable, RegisterMonitor, RequestMakerExpectingResponse, SetAvailable, SetUnavailable }
-import reactivemongo.core.errors.ConnectionException
-import reactivemongo.core.nodeset.{ Authenticate, ProtocolMetadata }
-import reactivemongo.core.protocol.{ CheckedWriteRequest, MongoWireVersion, RequestMaker, Response }
-import reactivemongo.core.commands.SuccessfulAuthentication
 import reactivemongo.api.commands.WriteConcern
+import reactivemongo.core.actors._
+import reactivemongo.core.commands.SuccessfulAuthentication
+import reactivemongo.core.errors.ConnectionException
+import reactivemongo.core.nodeset.{Authenticate, ProtocolMetadata}
+import reactivemongo.core.protocol.{CheckedWriteRequest, MongoWireVersion, RequestMaker, Response}
 import reactivemongo.util.LazyLogger
+
+import scala.concurrent.duration.{Duration, FiniteDuration}
+import scala.concurrent.{Await, ExecutionContext, Future, Promise}
+import scala.util.Try
+import scala.util.control.{NoStackTrace, NonFatal}
 
 /**
  * A pool of MongoDB connections, obtained from a [[reactivemongo.api.MongoDriver]].
@@ -276,8 +272,6 @@ class MongoConnection(
     }
 
     monitor ! check
-
-    import actorSystem.dispatcher
 
     p.future.map {
       case true => Option.empty[Exception] // is available - no error
