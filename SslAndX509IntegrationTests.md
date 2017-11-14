@@ -16,7 +16,7 @@ First of all we are going to create a server certificate. The certificate email 
 openssl req -new -x509 -days 365 -out mongodb-cert.crt -keyout mongodb-cert.key
 ```
 
-Be sure to use the same settings as bellow, as this will be important for generating the correct RFC2253 subject name. We'll want to have the same `CN`, `LN` and `CN` to smoothen testing and usage for local development.
+Be sure to use the same settings as bellow, as this will be important for generating the correct RFC2253 subject name. We'll want to have the same `Country Name`, `Locality Name` and `Common Name` to smoothen testing and usage for local development.
 
 ```sh
 Generating a 2048 bit RSA private key
@@ -57,7 +57,7 @@ Similar to Step 1, we're going to create the client certificate. Staying in the 
 ```sh
 openssl req -new -x509 -days 365 -out client-cert.crt -keyout client-cert.key
 ```
-We will use a different email (`testclient@testclient.com`), different passphrase(`testclient`) and different `O` and `OU` for our client certificate so that we have enough differentiators. 
+We will use a different email (`testclient@testclient.com`), different passphrase(`test_client`) and different `O` and `OU` for our client certificate so that we have enough differentiators. 
 
 Again, be sure you use the same fields as we do below bearing in mind the passphrase is `testclient`:
 
