@@ -17,21 +17,21 @@ package reactivemongo.api
 
 import java.util.concurrent.TimeUnit.MILLISECONDS
 
-import akka.actor.{Actor, ActorRef, ActorSystem, Props}
-import akka.pattern.{after, ask}
+import akka.actor.{ Actor, ActorRef, ActorSystem, Props }
+import akka.pattern.{ after, ask }
 import akka.util.Timeout
 import reactivemongo.api.commands.WriteConcern
 import reactivemongo.core.actors._
 import reactivemongo.core.commands.SuccessfulAuthentication
 import reactivemongo.core.errors.ConnectionException
-import reactivemongo.core.nodeset.{Authenticate, ProtocolMetadata}
-import reactivemongo.core.protocol.{CheckedWriteRequest, MongoWireVersion, RequestMaker, Response}
+import reactivemongo.core.nodeset.{ Authenticate, ProtocolMetadata }
+import reactivemongo.core.protocol.{ CheckedWriteRequest, MongoWireVersion, RequestMaker, Response }
 import reactivemongo.util.LazyLogger
 
-import scala.concurrent.duration.{Duration, FiniteDuration}
-import scala.concurrent.{Await, ExecutionContext, Future, Promise}
+import scala.concurrent.duration.{ Duration, FiniteDuration }
+import scala.concurrent.{ Await, ExecutionContext, Future, Promise }
 import scala.util.Try
-import scala.util.control.{NoStackTrace, NonFatal}
+import scala.util.control.{ NoStackTrace, NonFatal }
 
 /**
  * A pool of MongoDB connections, obtained from a [[reactivemongo.api.MongoDriver]].
@@ -272,6 +272,8 @@ class MongoConnection(
     }
 
     monitor ! check
+
+    import actorSystem.dispatcher
 
     p.future.map {
       case true => Option.empty[Exception] // is available - no error
