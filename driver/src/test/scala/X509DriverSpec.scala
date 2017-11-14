@@ -35,90 +35,79 @@ class X509DriverSpec extends org.specs2.mutable.Specification {
       connection.database(dbName, failoverStrategy)
 
     val id = System.identityHashCode(drv)
-    //
 
-    //    "be successful on existing connection with right credentials" >> {
-    //      "with the default connection" in { implicit ee: EE =>
-    //        connection.authenticate(dbName, "emailAddress=testclient@testclient.com,CN=127.0.0.1,OU=TEST_CLIENT,O=TEST_CLIENT,L=LONDON,ST=LONDON,C=UK", "").
-    //          aka("authentication") must beLike[SuccessfulAuthentication](
-    //            { case _ => ok }).await(1, timeout) and {
-    //              db_.flatMap {
-    //                _("testcol").insert(BSONDocument("foo" -> "bar"))
-    //              }.map(_ => {}) must beEqualTo({}).await(1, timeout * 2)
-    //            }
-    //      } tag "not_mongo26"
-    //    }
+    "be successful on existing connection with right credentials" >> {
+      "with the default connection" in { implicit ee: EE =>
+        connection.authenticate(dbName, "emailAddress=testclient@testclient.com,CN=127.0.0.1,OU=TEST_CLIENT,O=TEST_CLIENT,L=LONDON,ST=LONDON,C=UK", "").
+          aka("authentication") must beLike[SuccessfulAuthentication](
+            { case _ => ok }).await(1, timeout) and {
+              db_.flatMap {
+                _("testcol").insert(BSONDocument("foo" -> "bar"))
+              }.map(_ => {}) must beEqualTo({}).await(1, timeout * 2)
+            }
+      } tag "not_mongo26"
+    }
 
     "not be successful with wrong credentials" >> {
       "with the default connection" in { implicit ee: EE =>
-        connection.authenticate(dbName, "foo", "bar").
+        connection.authenticate(dbName, "foo", "").
           aka("authentication") must throwA[FailedAuthentication].
-          await(1, timeout)
+          await(1, 2 minutes)
 
       } tag "not_mongo26"
 
     }
 
-    //    "be successful with right credentials" >> {
-    //      val auth = Authenticate(dbName, s"emailAddress=testclient@testclient.com,CN=127.0.0.1,OU=TEST_CLIENT,O=TEST_CLIENT,L=LONDON,ST=LONDON,C=UK", "")
-    //
-    //      "with the default connection" in { implicit ee: EE =>
-    //        val con = drv.connection(
-    //          List(primaryHost), options = conOpts, authentications = Seq(auth))
-    //
-    //        con.database(dbName, Common.failoverStrategy).
-    //          aka("authed DB") must beLike[DefaultDB] {
-    //            case rdb => rdb.collection("testcol").insert(
-    //              BSONDocument("foo" -> "bar")).map(_ => {}).
-    //              aka("insertion") must beEqualTo({}).await(1, timeout)
-    //
-    //          }.await(1, timeout) and {
-    //            con.askClose()(timeout) must not(throwA[Exception]).
-    //              await(1, timeout)
-    //          }
-    //      } tag "not_mongo26"
-    //
-    //    }
-    //
-    //    "driver shutdown" in { // mainly to ensure the test driver is closed
-    //      drv.close(timeout) must not(throwA[Exception])
-    //    } tag "not_mongo26"
-    //
-    //    "fail on DB without authentication" >> {
-    //      val auth = Authenticate(Common.commonDb, "test", "password")
-    //
-    //      "with the default connection" in { implicit ee: EE =>
-    //        def con = Common.driver.connection(
-    //          List(primaryHost), options = conOpts, authentications = Seq(auth))
-    //
-    //        con.database(Common.commonDb, failoverStrategy).
-    //          aka("DB resolution") must throwA[PrimaryUnavailableException].like {
-    //            case reason => reason.getStackTrace.headOption.
-    //              aka("most recent") must beSome[StackTraceElement].like {
-    //                case mostRecent =>
-    //                  mostRecent.getClassName aka "class" must beEqualTo(
-    //                    "reactivemongo.api.MongoConnection") and (
-    //                      mostRecent.getMethodName aka "method" must_== "database")
-    //              } and {
-    //                Option(reason.getCause).
-    //                  aka("cause") must beSome[Throwable].like {
-    //                    case _: Exceptions.InternalState => ok
-    //                  }
-    //              }
-    //          }.await(1, timeout)
-    //
-    //      } tag "not_mongo26"
+    "be successful with right credentials" >> {
+      val auth = Authenticate(dbName, s"emailAddress=testclient@testclient.com,CN=127.0.0.1,OU=TEST_CLIENT,O=TEST_CLIENT,L=LONDON,ST=LONDON,C=UK", "")
 
-    //          "with the slow connection" in { implicit ee: EE =>
-    //            def con = Common.driver.connection(
-    //              List(slowPrimary), options = slowOpts, authentications = Seq(auth))
-    //
-    //            con.database(Common.commonDb, slowFailover).
-    //              aka("database resolution") must throwA[PrimaryUnavailableException].
-    //              await(1, slowTimeout)
-    //
-    //          } tag "not_mongo26"
-    //    }
+      "with the default connection" in { implicit ee: EE =>
+        val con = drv.connection(
+          List(primaryHost), options = conOpts, authentications = Seq(auth))
+
+        con.database(dbName, Common.failoverStrategy).
+          aka("authed DB") must beLike[DefaultDB] {
+            case rdb => rdb.collection("testcol").insert(
+              BSONDocument("foo" -> "bar")).map(_ => {}).
+              aka("insertion") must beEqualTo({}).await(1, timeout)
+
+          }.await(1, timeout) and {
+            con.askClose()(timeout) must not(throwA[Exception]).
+              await(1, timeout)
+          }
+      } tag "not_mongo26"
+
+    }
+
+    "driver shutdown" in { // mainly to ensure the test driver is closed
+      drv.close(timeout) must not(throwA[Exception])
+    } tag "not_mongo26"
+
+    "fail on DB without authentication" >> {
+      val auth = Authenticate(Common.commonDb, "test", "password")
+
+      "with the default connection" in { implicit ee: EE =>
+        def con = Common.driver.connection(
+          List(primaryHost), options = conOpts, authentications = Seq(auth))
+
+        con.database(Common.commonDb, failoverStrategy).
+          aka("DB resolution") must throwA[PrimaryUnavailableException].like {
+            case reason => reason.getStackTrace.headOption.
+              aka("most recent") must beSome[StackTraceElement].like {
+                case mostRecent =>
+                  mostRecent.getClassName aka "class" must beEqualTo(
+                    "reactivemongo.api.MongoConnection") and (
+                      mostRecent.getMethodName aka "method" must_== "database")
+              } and {
+                Option(reason.getCause).
+                  aka("cause") must beSome[Throwable].like {
+                    case _: Exceptions.InternalState => ok
+                  }
+              }
+          }.await(1, timeout)
+
+      } tag "not_mongo26"
+    }
   }
 
   def testMonitor[T](result: Promise[T], actorSys: ActorSystem = driver.system)(test: Any => Option[T]): ActorRef = actorSys.actorOf(Props(new Actor {

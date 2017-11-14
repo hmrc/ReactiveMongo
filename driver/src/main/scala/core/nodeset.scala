@@ -506,7 +506,7 @@ object Authenticating {
       case ScramSha1Authenticating(db, user, pass, _, _, _, _, _) =>
         Some((db, user, pass))
 
-      case X509Authenticating(db, user) =>
+      case X509Authenticating(db, user, _) =>
         Some((db, user, ""))
 
       case _ =>
@@ -531,8 +531,8 @@ case class ScramSha1Authenticating(
     s"Authenticating($db, $user})"
 }
 
-case class X509Authenticating(db: String, user: String) extends Authenticating {
-  override def password = ???
+case class X509Authenticating(db: String, user: String, password: String) extends Authenticating {
+  // we must keep password so the state machine works, it however will be ignored
 }
 
 case class Authenticated(db: String, user: String) extends Authentication

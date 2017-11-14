@@ -11,37 +11,29 @@ private[reactivemongo] trait MongoX509Authentication { system: MongoDBSystem =>
   import reactivemongo.core.nodeset.X509Authenticating
   import MongoDBSystem.logger
 
-  private var previouslyFailedAuthentication = false
+  var x509Steps = 0
 
   protected final def sendAuthenticate(connection: Connection, nextAuth: Authenticate): Connection = {
     connection.send(X509Authenticate(nextAuth.user)("$external").maker(RequestId.authenticate.next))
 
     connection.copy(authenticating = Some(
-      X509Authenticating(nextAuth.db, nextAuth.user)))
+      X509Authenticating(nextAuth.db, nextAuth.user, nextAuth.password)))
   }
 
   protected val authReceive: Receive = {
     case response: Response if RequestId.authenticate accepts response =>
       logger.debug(s"AUTH: got authenticated response! ${response.info.channelId}")
       val message = response.documents.toString(0, 87, Charset.defaultCharset())
-      if (message.toLowerCase.contains("failed")) {
-        whenAuthenticating(response.info.channelId) {
-          case (con, authenticating) =>
-            val failedMsg = "Failed to authenticate with X509 authentication. Either does not match certificate or one of the two does not exist"
-            if (!previouslyFailedAuthentication) {
-              authenticationResponse(response)(_ => Left(FailedAuthentication(failedMsg)))
-              previouslyFailedAuthentication = true
-            }
-            con.copy(authenticating = None)
-            val originalAuthenticate = Authenticate(authenticating.db, authenticating.user, "")
-            AuthRequestsManager.handleAuthResult(originalAuthenticate, FailedAuthentication(failedMsg))
-            con
+      if (x509Steps < 2) {
+        x509Steps += 1
+        if (message.toLowerCase.contains("failed")) {
+          val failedMsg = "Failed to authenticate with X509 authentication. Either does not match certificate or one of the two does not exist"
+          authenticationResponse(response)(_ => Left(FailedAuthentication(failedMsg)))
         }
-        ()
+        else {
+          authenticationResponse(response)(X509Authenticate.parseResponse)
+        }
       }
-      else {
-        authenticationResponse(response)(X509Authenticate.parseResponse)
-      }
+      ()
   }
-
 }
