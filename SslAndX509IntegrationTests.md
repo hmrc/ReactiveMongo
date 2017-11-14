@@ -228,9 +228,26 @@ db.getSiblingDB("$external").runCommand(
 )
 ```
 
-#### Step 10 - Running X509DriverSpec 
+#### Step 10 - Enable X509 authentication.
 
-Finally to validate all this works, first we must uncomment out `security` and `clusterAuthMode` configurations from the earlier created `mongodb-ssl.conf` file. Then, restart MongoDB with the updated conf. Once you have done that, run the following command to test X509 authentication with ReactiveMongo. Again, be sure to change the location of where your keystore is based on where your home directory is.
+Now let's go back to our `mongodb-ssl.conf` and uncomment out `security` and `clusterAuthMode` configurations from the earlier created `mongodb-ssl.conf` file. Then, restart MongoDB with the updated conf.
+
+If all goes well, connect to MongoDB using the command from Step 5 and once you are in, try and run `show dbs`. That command should fail. Now authenticate using the following command:
+
+```javascript
+db.getSiblingDB("$external").auth(
+  {
+    mechanism: "MONGODB-X509",
+    user: "emailAddress=testclient@testclient.com,CN=127.0.0.1,OU=TEST_CLIENT,O=TEST_CLIENT,L=LONDON,ST=LONDON,C=UK"
+  }
+)
+```
+
+From there, run `show dbs`. It should work again. Also, maybe try creating a document in `test` database. First you would run `use test` then you would issue a command such as `db.testCol.insert({k: "v"})` and it should work.
+
+#### Step 11 - Running X509DriverSpec 
+
+Finally to validate all this works, we run the following command to test X509 authentication with ReactiveMongo. Again, be sure to change the location of where your keystore is based on where your home directory is.
 
 ```sh
 sbt -Djavax.net.ssl.keyStore=/Users/bob/.mongossl/keystore.jks -Djavax.net.ssl.keyStorePassword=test_client -Djavax.net.ssl.keyStoreType=JKS ";project ReactiveMongo; test-only *X509DriverSpec"
