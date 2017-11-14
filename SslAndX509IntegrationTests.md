@@ -209,12 +209,6 @@ Now you need to pass in three VM parameters to any application that runs Reactiv
 - javax.net.ssl.keyStoreType
     + This is to specify the keystore type. Must be set to JKS.
 
-An example of running tests would be to run the following command, again assuming macOS operating system and username `bob`:
-
-```sh
-sbt -Djavax.net.ssl.keyStore=/Users/bob/.mongossl/keystore.jks -Djavax.net.ssl.keyStorePassword=test_client -Djavax.net.ssl.keyStoreType=JKS test
-```
-
 #### Step 9 - Creating a User to Enable X509 Authentication in MongoDB's Auth DB
 
 Now that we have SSL/TLS working, we can now use X509 authentication. But before we do that, we must first enable a user for X509 authentication. Use the following command to create the user and allow it to work with the default db `test`, `test-team-and-repositories` where a spike includes a working x509 test and `specs2-test-x509-auth` for the `X509DriverSpec` to do integration tests around the driver. I also give it `root` access to the `admin` database for local development, this SHOULD NOT happen for production. The following must executed inside a `mongo` client shell:
