@@ -3,10 +3,12 @@ package reactivemongo.core.actors
 import java.nio.charset.Charset
 
 import reactivemongo.core.commands.FailedAuthentication
-import reactivemongo.core.nodeset.{ Authenticate, Connection }
+import reactivemongo.core.nodeset.{ Authenticate, Authenticated, Connection }
 import reactivemongo.core.protocol.Response
 
-private[reactivemongo] trait MongoX509Authentication { system: MongoDBSystem =>
+private[reactivemongo] trait MongoX509Authentication {
+  system: MongoDBSystem =>
+
   import reactivemongo.core.commands.X509Authenticate
   import reactivemongo.core.nodeset.X509Authenticating
   import MongoDBSystem.logger
@@ -25,15 +27,16 @@ private[reactivemongo] trait MongoX509Authentication { system: MongoDBSystem =>
     case response: Response if RequestId.authenticate accepts response =>
       logger.debug(s"AUTH: got authenticated response! ${response.info.channelId}")
       val message = response.documents.toString(0, 87, Charset.defaultCharset())
-      if (x509Steps <= maxRetries) {
-        x509Steps += 1
-        if (message.toLowerCase.contains("failed")) {
-          val failedMsg = "Failed to authenticate with X509 authentication. Either does not match certificate or one of the two does not exist"
-          authenticationResponse(response)(_ => Left(FailedAuthentication(failedMsg)))
+      if (message.toLowerCase.contains("failed")) {
+        whenAuthenticating(response.info.channelId) {
+          case (con, _) =>
+            val failedMsg = "Failed to authenticate with X509 authentication. Either does not match certificate or one of the two does not exist"
+            authenticationResponse(response)(_ => Left(FailedAuthentication(failedMsg)))
+            con.copy(authenticating = None)
         }
-        else {
-          authenticationResponse(response)(X509Authenticate.parseResponse)
-        }
+      }
+      else {
+        authenticationResponse(response)(X509Authenticate.parseResponse)
       }
       ()
   }
