@@ -3,7 +3,7 @@ package reactivemongo.core.actors
 import java.nio.charset.Charset
 
 import reactivemongo.core.commands.FailedAuthentication
-import reactivemongo.core.nodeset.{ Authenticate, Authenticated, Connection }
+import reactivemongo.core.nodeset.{ Authenticate, Connection }
 import reactivemongo.core.protocol.Response
 
 private[reactivemongo] trait MongoX509Authentication {
@@ -12,9 +12,6 @@ private[reactivemongo] trait MongoX509Authentication {
   import reactivemongo.core.commands.X509Authenticate
   import reactivemongo.core.nodeset.X509Authenticating
   import MongoDBSystem.logger
-
-  var x509Steps = 0
-  val maxRetries = 1
 
   protected final def sendAuthenticate(connection: Connection, nextAuth: Authenticate): Connection = {
     connection.send(X509Authenticate(nextAuth.user)("$external").maker(RequestId.authenticate.next))
