@@ -1,11 +1,6 @@
 import scala.concurrent.{ Await, ExecutionContext }
 import scala.concurrent.duration._
-import reactivemongo.api.{
-  CrAuthentication,
-  FailoverStrategy,
-  MongoDriver,
-  MongoConnectionOptions
-}
+import reactivemongo.api._
 
 object Common {
   val logger = reactivemongo.util.LazyLogger("tests")
@@ -16,8 +11,11 @@ object Common {
       case _      => false
     }
 
-  val crMode = Option(System getProperty "test.authMode").
-    filter(_ == "cr").map(_ => CrAuthentication)
+  val authMode = Option(System.getProperty("test.authMode")) flatMap {
+    case "cr"   => Some(CrAuthentication)
+    case "x509" => Some(X509Authentication)
+    case _      => None
+  }
 
   val primaryHost =
     Option(System getProperty "test.primaryHost").getOrElse("localhost:27017")
@@ -37,16 +35,16 @@ object Common {
   val DefaultOptions = {
     val a = MongoConnectionOptions(
       failoverStrategy = failoverStrategy,
-      nbChannelsPerNode = 20
-    )
+      nbChannelsPerNode = 20)
 
     val b = {
       if (Option(System getProperty "test.enableSSL").exists(_ == "true")) {
         a.copy(sslEnabled = true, sslAllowsInvalidCert = true)
-      } else a
+      }
+      else a
     }
 
-    crMode.fold(b) { mode => b.copy(authMode = mode) }
+    authMode.fold(b) { mode => b.copy(authMode = mode) }
   }
 
   lazy val connection = driver.connection(List(primaryHost), DefaultOptions)
@@ -76,12 +74,10 @@ object Common {
   }
 
   val SlowOptions = DefaultOptions.copy(
-    failoverStrategy = slowFailover
-  )
+    failoverStrategy = slowFailover)
 
   val slowPrimary = Option(
-    System getProperty "test.slowPrimaryHost"
-  ).getOrElse("localhost:27019")
+    System getProperty "test.slowPrimaryHost").getOrElse("localhost:27019")
 
   val slowTimeout: FiniteDuration = {
     val maxTimeout = estTimeout(slowFailover)
@@ -101,7 +97,8 @@ object Common {
       case AddressPort(addr, p) => try {
         val port = p.toInt
         new InetSocketAddress(addr, port)
-      } catch {
+      }
+      catch {
         case e: Throwable =>
           logger.error(s"fails to prepare local address: $e")
           throw e
@@ -114,7 +111,8 @@ object Common {
       case (host, p) => try {
         val port = p.drop(1).toInt
         new InetSocketAddress(host, port)
-      } catch {
+      }
+      catch {
         case e: Throwable =>
           logger.error(s"fails to prepare remote address: $e")
           throw e
@@ -130,16 +128,17 @@ object Common {
 
   lazy val slowConnection = driver.connection(List(slowPrimary), SlowOptions)
 
-  lazy val (db, slowDb) = {
+  def databases(con: MongoConnection, slowCon: MongoConnection): (DefaultDB, DefaultDB) = {
     import ExecutionContext.Implicits.global
 
-    val _db = connection.database(commonDb, failoverStrategy).
-      flatMap { d => d.drop.map(_ => d) }
+    val _db = con.database(
+      commonDb, failoverStrategy).flatMap(d => d.drop.map(_ => d))
 
     Await.result(_db, timeout) -> Await.result(
-      slowConnection.database(commonDb, slowFailover), slowTimeout
-    )
+      slowCon.database(commonDb, slowFailover), slowTimeout)
   }
+
+  lazy val (db, slowDb) = databases(connection, slowConnection)
 
   @annotation.tailrec
   def tryUntil[T](retries: List[Int])(f: => T, test: T => Boolean): Boolean =
@@ -158,7 +157,8 @@ object Common {
     if (driverStarted) {
       try {
         driver.close()
-      } catch {
+      }
+      catch {
         case e: Throwable =>
           logger.warn(s"Fails to stop the default driver: $e")
           logger.debug("Fails to stop the default driver", e)

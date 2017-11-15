@@ -137,8 +137,7 @@ case class CollStatsResult(
   totalIndexSize: Int,
   indexSizes: Array[(String, Int)],
   capped: Boolean,
-  max: Option[Long]
-)
+  max: Option[Long])
 
 object CollStatsResult extends BSONCommandResultMaker[CollStatsResult] {
   def apply(doc: BSONDocument): Either[CommandError, CollStatsResult] = {

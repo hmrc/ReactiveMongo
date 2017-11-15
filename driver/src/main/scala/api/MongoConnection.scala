@@ -17,45 +17,21 @@ package reactivemongo.api
 
 import java.util.concurrent.TimeUnit.MILLISECONDS
 
-import scala.util.Try
-import scala.util.control.{ NonFatal, NoStackTrace }
-
-import scala.concurrent.{
-  Await,
-  ExecutionContext,
-  Future,
-  Promise
-}
-import scala.concurrent.duration.{ Duration, FiniteDuration }
-
-import akka.util.Timeout
 import akka.actor.{ Actor, ActorRef, ActorSystem, Props }
 import akka.pattern.{ after, ask }
-
-import reactivemongo.core.actors.{
-  AuthRequest,
-  CheckedWriteRequestExpectingResponse,
-  Close,
-  Closed,
-  Exceptions,
-  PrimaryAvailable,
-  PrimaryUnavailable,
-  RegisterMonitor,
-  RequestMakerExpectingResponse,
-  SetAvailable,
-  SetUnavailable
-}
+import akka.util.Timeout
+import reactivemongo.api.commands.WriteConcern
+import reactivemongo.core.actors._
+import reactivemongo.core.commands.SuccessfulAuthentication
 import reactivemongo.core.errors.ConnectionException
 import reactivemongo.core.nodeset.{ Authenticate, ProtocolMetadata }
-import reactivemongo.core.protocol.{
-  CheckedWriteRequest,
-  MongoWireVersion,
-  RequestMaker,
-  Response
-}
-import reactivemongo.core.commands.SuccessfulAuthentication
-import reactivemongo.api.commands.WriteConcern
+import reactivemongo.core.protocol.{ CheckedWriteRequest, MongoWireVersion, RequestMaker, Response }
 import reactivemongo.util.LazyLogger
+
+import scala.concurrent.duration.{ Duration, FiniteDuration }
+import scala.concurrent.{ Await, ExecutionContext, Future, Promise }
+import scala.util.Try
+import scala.util.control.{ NoStackTrace, NonFatal }
 
 /**
  * A pool of MongoDB connections, obtained from a [[reactivemongo.api.MongoDriver]].
@@ -84,8 +60,7 @@ class MongoConnection(
     val name: String,
     val actorSystem: ActorSystem,
     val mongosystem: ActorRef,
-    val options: MongoConnectionOptions
-) {
+    val options: MongoConnectionOptions) {
   import Exceptions._
 
   @deprecated("Create with an explicit supervisor and connection names", "0.11.14")
@@ -131,8 +106,7 @@ class MongoConnection(
     waitIsAvailable(failoverStrategy).map(_ => apply(name, failoverStrategy))
 
   private val databaseSTE = new StackTraceElement(
-    "reactivemongo.api.MongoConnection", "database", "api.scala", -1
-  )
+    "reactivemongo.api.MongoConnection", "database", "api.scala", -1)
 
   /** Returns a future that will be successful when node set is available. */
   private[api] def waitIsAvailable(failoverStrategy: FailoverStrategy)(implicit ec: ExecutionContext): Future[Unit] = {
@@ -150,7 +124,8 @@ class MongoConnection(
     @inline def finalErr(lastErr: Throwable): Throwable = {
       val error = if (lastErr == null) {
         new NodeSetNotReachable(supervisor, name, history())
-      } else lastErr
+      }
+      else lastErr
 
       error.setStackTrace(databaseSTE +: error.getStackTrace)
 
@@ -159,12 +134,12 @@ class MongoConnection(
 
     def wait(iteration: Int, attempt: Int, timeout: FiniteDuration, lastErr: Throwable = null): Future[Unit] = {
       logger.trace(
-        s"[$lnm] Wait is available: $attempt @ ${System.currentTimeMillis}"
-      )
+        s"[$lnm] Wait is available: $attempt @ ${System.currentTimeMillis}")
 
       if (attempt == 0) {
         Future.failed(finalErr(lastErr))
-      } else {
+      }
+      else {
         @inline def res: Either[Retry, Unit] = try {
           val before = System.currentTimeMillis
           val unavail = Await.result(probe, timeout)
@@ -172,12 +147,12 @@ class MongoConnection(
 
           unavail match {
             case Some(reason) => Left(FiniteDuration(
-              timeout.toMillis - duration, MILLISECONDS
-            ) -> reason)
+              timeout.toMillis - duration, MILLISECONDS) -> reason)
 
             case _ => Right({})
           }
-        } catch {
+        }
+        catch {
           case e: Throwable => Left(timeout -> e)
         }
 
@@ -206,13 +181,11 @@ class MongoConnection(
           case Some(ProtocolMetadata(
             _, MongoWireVersion.V24AndBefore, _, _, _)) =>
             Future.failed[Unit](ConnectionException(
-              s"unsupported MongoDB version < 2.6 ($lnm)"
-            ))
+              s"unsupported MongoDB version < 2.6 ($lnm)"))
 
           case Some(_) => Future successful {}
           case _ => Future.failed[Unit](ConnectionException(
-            s"protocol metadata not available ($lnm)"
-          ))
+            s"protocol metadata not available ($lnm)"))
         }
       }
   }
@@ -224,7 +197,8 @@ class MongoConnection(
     if (killed) {
       logger.debug(s"[$lnm] Cannot send request when the connection is killed")
       Future.failed(new ClosedException(supervisor, name, history()))
-    } else f
+    }
+    else f
   }
 
   /**
@@ -307,7 +281,8 @@ class MongoConnection(
       case _ => {
         if (options.readPreference.slaveOk) {
           Some(new NodeSetNotReachable(supervisor, name, history()))
-        } else {
+        }
+        else {
           Some(new PrimaryUnavailableException(supervisor, name, history()))
         }
       }
@@ -315,8 +290,7 @@ class MongoConnection(
   }
 
   private[api] val monitor = actorSystem.actorOf(
-    Props(new MonitorActor), s"Monitor-$name"
-  )
+    Props(new MonitorActor), s"Monitor-$name")
 
   @volatile private[api] var metadata: Option[ProtocolMetadata] = None
 
@@ -408,8 +382,7 @@ object MongoConnection {
     options: MongoConnectionOptions,
     ignoredOptions: List[String],
     db: Option[String],
-    authenticate: Option[Authenticate]
-  )
+    authenticate: Option[Authenticate])
   // TODO: Type for URI with required DB name
 
   /**
@@ -431,14 +404,19 @@ object MongoConnection {
       }
 
       // ---
-
+      val (unsupportedKeys, options) = opts
       if (useful.indexOf("@") == -1) {
         val (db, hosts) = parseHostsAndDbName(useful)
-        val (unsupportedKeys, options) = opts
 
-        ParsedURI(hosts, options, unsupportedKeys, db, None)
-      } else {
+        options.authMode match {
+          case X509Authentication => ParsedURI(hosts, options, unsupportedKeys, db,
+            Some(Authenticate(db.getOrElse(throw new URIParsingException(s"Could not parse URI '$uri': authentication information found but no database name in URI")), "", "")))
+          case _ => ParsedURI(hosts, options, unsupportedKeys, db, None)
+        }
+      }
+      else {
         val WithAuth = """([^:]+):([^@]*)@(.+)""".r
+        val WithAuthNoPassword = """([^:]+)@(.+)""".r
 
         useful match {
           case WithAuth(user, pass, hostsPortsAndDbName) => {
@@ -447,10 +425,25 @@ object MongoConnection {
             db.fold[ParsedURI](throw new URIParsingException(s"Could not parse URI '$uri': authentication information found but no database name in URI")) { database =>
               val (unsupportedKeys, options) = opts
 
+              if (options.authMode == X509Authentication && pass.nonEmpty) {
+                throw new URIParsingException("You should not provide a password when authenticating with X509 authentication")
+              }
+
               ParsedURI(hosts, options, unsupportedKeys, Some(database), Some(Authenticate.apply(options.authSource.getOrElse(database), user, pass)))
             }
           }
+          case WithAuthNoPassword(user, hostsPortsAndDbName) if options.authMode == X509Authentication => {
+            val (db, hosts) = parseHostsAndDbName(hostsPortsAndDbName)
 
+            db.fold[ParsedURI](throw new URIParsingException(s"Could not parse URI '$uri': authentication information found but no database name in URI")) { database =>
+
+              options.authMode match {
+                case _ => ParsedURI(hosts, options, unsupportedKeys, Some(database),
+                  Some(Authenticate(options.authSource.
+                    getOrElse(database), user, "")))
+              }
+            }
+          }
           case _ => throw new URIParsingException(s"Could not parse URI '$uri'")
         }
       }
@@ -464,7 +457,8 @@ object MongoConnection {
           val p = port.toInt
           if (p > 0 && p < 65536) p
           else throw new URIParsingException(s"Could not parse hosts '$hosts' from URI: invalid port '$port'")
-        } catch {
+        }
+        catch {
           case _: NumberFormatException => throw new URIParsingException(s"Could not parse hosts '$hosts' from URI: invalid port '$port'")
           case NonFatal(e)              => throw e
         }
@@ -479,8 +473,7 @@ object MongoConnection {
     case hosts :: dbName :: Nil => Some(dbName.takeWhile(_ != '?')) -> parseHosts(hosts)
     case _ =>
       throw new URIParsingException(
-        s"Could not parse hosts and database from URI: '$hostsPortAndDbName'"
-      )
+        s"Could not parse hosts and database from URI: '$hostsPortAndDbName'")
   }
 
   private def parseOptions(uriAndOptions: String): Map[String, String] =
@@ -489,8 +482,7 @@ object MongoConnection {
         option.split("=").toList match {
           case key :: value :: Nil => (key -> value)
           case _ => throw new URIParsingException(
-            s"Could not parse URI '$uri': invalid options '$options'"
-          )
+            s"Could not parse URI '$uri': invalid options '$options'")
         }
       }.toMap
 
@@ -502,11 +494,13 @@ object MongoConnection {
 
   private def makeOptions(opts: Map[String, String]): (List[String], MongoConnectionOptions) = {
     val (remOpts, step1) = opts.iterator.foldLeft(
-      Map.empty[String, String] -> MongoConnectionOptions()
-    ) {
+      Map.empty[String, String] -> MongoConnectionOptions()) {
         case ((unsupported, result), kv) => kv match {
           case ("authSource", v) => unsupported -> result.
             copy(authSource = Some(v))
+
+          case ("authMode", "x509") => unsupported -> result.
+            copy(authMode = X509Authentication)
 
           case ("authMode", "mongocr") => unsupported -> result.
             copy(authMode = CrAuthentication)
@@ -552,30 +546,24 @@ object MongoConnection {
 
           case ("readPreference", "primaryPreferred") =>
             unsupported -> result.copy(
-              readPreference = ReadPreference.primaryPreferred
-            )
+              readPreference = ReadPreference.primaryPreferred)
 
           case ("readPreference", "secondary") => unsupported -> result.copy(
-            readPreference = ReadPreference.secondary
-          )
+            readPreference = ReadPreference.secondary)
 
           case ("readPreference", "secondaryPreferred") =>
             unsupported -> result.copy(
-              readPreference = ReadPreference.secondaryPreferred
-            )
+              readPreference = ReadPreference.secondaryPreferred)
 
           case ("readPreference", "nearest") => unsupported -> result.copy(
-            readPreference = ReadPreference.nearest
-          )
+            readPreference = ReadPreference.nearest)
 
           case ("rm.failover", "default") => unsupported -> result
           case ("rm.failover", "remote") => unsupported -> result.copy(
-            failoverStrategy = FailoverStrategy.remote
-          )
+            failoverStrategy = FailoverStrategy.remote)
 
           case ("rm.failover", "strict") => unsupported -> result.copy(
-            failoverStrategy = FailoverStrategy.strict
-          )
+            failoverStrategy = FailoverStrategy.strict)
 
           case ("rm.failover", opt @ FailoverRe(d, r, f)) => (for {
             (time, unit) <- Try(Duration(d)).toOption.flatMap(Duration.unapply)
@@ -592,8 +580,7 @@ object MongoConnection {
           case ("rm.monitorRefreshMS", opt @ IntRe(ms)) =>
             Try(ms.toInt).filter(_ >= 100 /* ms */ ).toOption match {
               case Some(interval) => unsupported -> result.copy(
-                monitorRefreshMS = interval
-              )
+                monitorRefreshMS = interval)
 
               case _ => (unsupported + ("rm.monitorRefreshMS" -> opt)) -> result
             }

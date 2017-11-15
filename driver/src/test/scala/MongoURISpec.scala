@@ -1,9 +1,5 @@
-import reactivemongo.api.{
-  MongoConnection,
-  MongoConnectionOptions,
-  ScramSha1Authentication
-}, MongoConnection.{ ParsedURI, parseURI }
-
+import reactivemongo.api.{ MongoConnection, MongoConnectionOptions, ScramSha1Authentication, X509Authentication }
+import MongoConnection.{ ParsedURI, parseURI }
 import reactivemongo.core.nodeset.Authenticate
 import reactivemongo.api.commands.WriteConcern
 
@@ -21,9 +17,7 @@ class MongoURISpec extends org.specs2.mutable.Specification {
           db = None,
           authenticate = None,
           options = MongoConnectionOptions(),
-          ignoredOptions = List()
-        )
-      )
+          ignoredOptions = List()))
     }
 
     val withOpts = "mongodb://host1?foo=bar"
@@ -34,14 +28,12 @@ class MongoURISpec extends org.specs2.mutable.Specification {
         db = None,
         authenticate = None,
         options = MongoConnectionOptions(),
-        ignoredOptions = List("foo")
-      )
+        ignoredOptions = List("foo"))
 
       parseURI(withOpts) must beSuccessfulTry(expected) and {
         Common.driver.connection(expected, true) must beFailedTry.
           withThrowable[IllegalArgumentException](
-            "The connection URI contains unsupported options: foo"
-          )
+            "The connection URI contains unsupported options: foo")
       }
     }
 
@@ -53,9 +45,7 @@ class MongoURISpec extends org.specs2.mutable.Specification {
           db = None,
           authenticate = None,
           options = MongoConnectionOptions(),
-          ignoredOptions = List()
-        )
-      )
+          ignoredOptions = List()))
     }
 
     val withWrongPort = "mongodb://host1:68903"
@@ -76,9 +66,7 @@ class MongoURISpec extends org.specs2.mutable.Specification {
           db = Some("somedb"),
           authenticate = None,
           options = MongoConnectionOptions(),
-          ignoredOptions = List()
-        )
-      )
+          ignoredOptions = List()))
     }
 
     val withAuth = "mongodb://user123:passwd123@host1/somedb"
@@ -89,9 +77,7 @@ class MongoURISpec extends org.specs2.mutable.Specification {
           db = Some("somedb"),
           authenticate = Some(Authenticate("somedb", "user123", "passwd123")),
           options = MongoConnectionOptions(),
-          ignoredOptions = List()
-        )
-      )
+          ignoredOptions = List()))
     }
 
     val wrongWithAuth = "mongodb://user123:passwd123@host1"
@@ -108,9 +94,31 @@ class MongoURISpec extends org.specs2.mutable.Specification {
           db = Some("somedb"),
           authenticate = Some(Authenticate("somedb", "user123", "passwd123")),
           options = MongoConnectionOptions(authMode = ScramSha1Authentication),
-          ignoredOptions = List("foo")
-        )
-      )
+          ignoredOptions = List("foo")))
+    }
+
+    val withAuthModeX509WithNoUser = "mongodb://host1:27018,host2:27019,host3:27020/somedb?foo=bar&authMode=x509"
+
+    s"parse $withAuthModeX509WithNoUser with success" in {
+      parseURI(withAuthModeX509WithNoUser) must beSuccessfulTry(
+        ParsedURI(
+          hosts = List("host1" -> 27018, "host2" -> 27019, "host3" -> 27020),
+          db = Some("somedb"),
+          authenticate = Some(Authenticate("somedb", "", "")),
+          options = MongoConnectionOptions(authMode = X509Authentication),
+          ignoredOptions = List("foo")))
+    }
+
+    val withAuthModeX509WithUser = "mongodb://username@test.com,CN=127.0.0.1,OU=TEST_CLIENT,O=TEST_CLIENT,L=LONDON,ST=LONDON,C=UK@host1:27018,host2:27019,host3:27020/somedb?foo=bar&authMode=x509"
+
+    s"parse $withAuthModeX509WithUser with success" in {
+      parseURI(withAuthModeX509WithUser) must beSuccessfulTry(
+        ParsedURI(
+          hosts = List("host1" -> 27018, "host2" -> 27019, "host3" -> 27020),
+          db = Some("somedb"),
+          authenticate = Some(Authenticate("somedb", "username@test.com,CN=127.0.0.1,OU=TEST_CLIENT,O=TEST_CLIENT,L=LONDON,ST=LONDON,C=UK", "")),
+          options = MongoConnectionOptions(authMode = X509Authentication),
+          ignoredOptions = List("foo")))
     }
 
     val withAuthParamAndSource = "mongodb://user123:;qGu:je/LX}nN\\8@host1:27018,host2:27019,host3:27020/somedb?foo=bar&authSource=authdb"
@@ -121,12 +129,9 @@ class MongoURISpec extends org.specs2.mutable.Specification {
           hosts = List("host1" -> 27018, "host2" -> 27019, "host3" -> 27020),
           db = Some("somedb"),
           authenticate = Some(Authenticate(
-            "authdb", "user123", ";qGu:je/LX}nN\\8"
-          )),
+            "authdb", "user123", ";qGu:je/LX}nN\\8")),
           options = MongoConnectionOptions(authSource = Some("authdb")),
-          ignoredOptions = List("foo")
-        )
-      )
+          ignoredOptions = List("foo")))
     }
 
     val withWriteConcern = "mongodb://user123:passwd123@host1:27018,host2:27019,host3:27020/somedb?writeConcern=journaled"
@@ -137,10 +142,8 @@ class MongoURISpec extends org.specs2.mutable.Specification {
         db = Some("somedb"),
         authenticate = Some(Authenticate("somedb", "user123", "passwd123")),
         options = MongoConnectionOptions(
-          writeConcern = WriteConcern.Journaled
-        ),
-        ignoredOptions = Nil
-      ))
+          writeConcern = WriteConcern.Journaled),
+        ignoredOptions = Nil))
     }
 
     val withWriteConcernWMaj = "mongodb://user123:passwd123@host1:27018,host2:27019,host3:27020/somedb?writeConcernW=majority"
@@ -151,10 +154,8 @@ class MongoURISpec extends org.specs2.mutable.Specification {
         db = Some("somedb"),
         authenticate = Some(Authenticate("somedb", "user123", "passwd123")),
         options = MongoConnectionOptions(
-          writeConcern = WriteConcern.Default.copy(w = WriteConcern.Majority)
-        ),
-        ignoredOptions = Nil
-      ))
+          writeConcern = WriteConcern.Default.copy(w = WriteConcern.Majority)),
+        ignoredOptions = Nil))
     }
 
     val withWriteConcernWTag = "mongodb://user123:passwd123@host1:27018,host2:27019,host3:27020/somedb?writeConcernW=anyTag"
@@ -166,11 +167,8 @@ class MongoURISpec extends org.specs2.mutable.Specification {
         authenticate = Some(Authenticate("somedb", "user123", "passwd123")),
         options = MongoConnectionOptions(
           writeConcern = WriteConcern.Default.copy(
-            w = WriteConcern.TagSet("anyTag")
-          )
-        ),
-        ignoredOptions = Nil
-      ))
+            w = WriteConcern.TagSet("anyTag"))),
+        ignoredOptions = Nil))
     }
 
     val withWriteConcernWAck = "mongodb://user123:passwd123@host1:27018,host2:27019,host3:27020/somedb?writeConcernW=5"
@@ -182,11 +180,8 @@ class MongoURISpec extends org.specs2.mutable.Specification {
         authenticate = Some(Authenticate("somedb", "user123", "passwd123")),
         options = MongoConnectionOptions(
           writeConcern = WriteConcern.Default.copy(
-            w = WriteConcern.WaitForAcknowledgments(5)
-          )
-        ),
-        ignoredOptions = Nil
-      ))
+            w = WriteConcern.WaitForAcknowledgments(5))),
+        ignoredOptions = Nil))
     }
 
     val withWriteConcernJournaled = "mongodb://user123:passwd123@host1:27018,host2:27019,host3:27020/somedb?writeConcernJ=true"
@@ -198,11 +193,8 @@ class MongoURISpec extends org.specs2.mutable.Specification {
           db = Some("somedb"),
           authenticate = Some(Authenticate("somedb", "user123", "passwd123")),
           options = MongoConnectionOptions(
-            writeConcern = WriteConcern.Default.copy(j = true)
-          ),
-          ignoredOptions = Nil
-        )
-      )
+            writeConcern = WriteConcern.Default.copy(j = true)),
+          ignoredOptions = Nil))
     }
 
     val withWriteConcernNJ = "mongodb://user123:passwd123@host1:27018,host2:27019,host3:27020/somedb?writeConcernJ=false&writeConcern=journaled"
@@ -214,11 +206,8 @@ class MongoURISpec extends org.specs2.mutable.Specification {
           db = Some("somedb"),
           authenticate = Some(Authenticate("somedb", "user123", "passwd123")),
           options = MongoConnectionOptions(
-            writeConcern = WriteConcern.Journaled.copy(j = false)
-          ),
-          ignoredOptions = Nil
-        )
-      )
+            writeConcern = WriteConcern.Journaled.copy(j = false)),
+          ignoredOptions = Nil))
     }
 
     val withWriteConcernTmout = "mongodb://user123:passwd123@host1:27018,host2:27019,host3:27020/somedb?writeConcernTimeout=1543"
@@ -230,11 +219,8 @@ class MongoURISpec extends org.specs2.mutable.Specification {
           db = Some("somedb"),
           authenticate = Some(Authenticate("somedb", "user123", "passwd123")),
           options = MongoConnectionOptions(
-            writeConcern = WriteConcern.Default.copy(wtimeout = Some(1543))
-          ),
-          ignoredOptions = Nil
-        )
-      )
+            writeConcern = WriteConcern.Default.copy(wtimeout = Some(1543))),
+          ignoredOptions = Nil))
     }
 
     val defaultFo = "mongodb://host1?rm.failover=default"

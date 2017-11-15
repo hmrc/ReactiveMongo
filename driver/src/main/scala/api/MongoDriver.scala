@@ -2,13 +2,10 @@ package reactivemongo.api
 
 import java.util.concurrent.atomic.AtomicLong
 
-import scala.util.{ Try, Failure, Success }
-
+import scala.util.{ Failure, Success, Try }
 import scala.concurrent.{ Await, Future }
 import scala.concurrent.duration.{ Duration, FiniteDuration, SECONDS }
-
 import com.typesafe.config.Config
-
 import akka.util.Timeout
 import akka.actor.{ Actor, ActorRef, ActorSystem, Props, Terminated }
 import akka.pattern.ask
@@ -17,7 +14,8 @@ import reactivemongo.core.actors.{
   Close,
   LegacyDBSystem,
   MongoDBSystem,
-  StandardDBSystem
+  StandardDBSystem,
+  StandardDBSystemWithX509
 }
 import reactivemongo.core.nodeset.Authenticate
 import reactivemongo.util.LazyLogger
@@ -38,8 +36,7 @@ import reactivemongo.util.LazyLogger
  */
 class MongoDriver(
     config: Option[Config] = None,
-    classLoader: Option[ClassLoader] = None
-) {
+    classLoader: Option[ClassLoader] = None) {
   @deprecated("Use the constructor with the classloader", "0.12-RC6")
   def this(config: Option[Config]) = this(config, None)
 
@@ -51,7 +48,7 @@ class MongoDriver(
     TimedSystemControl
   }
 
-  /* MongoDriver always uses its own ActorSystem 
+  /* MongoDriver always uses its own ActorSystem
    * so it can have complete control separate from other
    * Actor Systems in the application
    */
@@ -61,7 +58,8 @@ class MongoDriver(
     val cfg = if (!reference.hasPath("mongo-async-driver")) {
       logger.info("No mongo-async-driver configuration found")
       ConfigFactory.empty()
-    } else reference.getConfig("mongo-async-driver")
+    }
+    else reference.getConfig("mongo-async-driver")
 
     ActorSystem("reactivemongo", Some(cfg), classLoader)
   }
@@ -142,19 +140,19 @@ class MongoDriver(
     // TODO: Passing ref to MongoDBSystem.history to AddConnection
     lazy val dbsystem: MongoDBSystem = options.authMode match {
       case CrAuthentication => new LegacyDBSystem(
-        supervisorName, nm, nodes, authentications, options
-      )
+        supervisorName, nm, nodes, authentications, options)
+
+      case X509Authentication => new StandardDBSystemWithX509(
+        supervisorName, nm, nodes, authentications, options)
 
       case _ => new StandardDBSystem(
-        supervisorName, nm, nodes, authentications, options
-      )
+        supervisorName, nm, nodes, authentications, options)
     }
 
     val mongosystem = system.actorOf(Props(dbsystem), nm)
 
     def connection = (supervisorActor ? AddConnection(
-      nm, nodes, options, mongosystem
-    ))(Timeout(10, SECONDS))
+      nm, nodes, options, mongosystem))(Timeout(10, SECONDS))
 
     logger.info(s"[$supervisorName] Creating connection: $nm")
 
@@ -234,7 +232,8 @@ class MongoDriver(
 
     if (!parsedURI.ignoredOptions.isEmpty && strictUri) {
       Failure(new IllegalArgumentException(s"The connection URI contains unsupported options: ${parsedURI.ignoredOptions.mkString(", ")}"))
-    } else {
+    }
+    else {
       if (!parsedURI.ignoredOptions.isEmpty) logger.warn(s"Some options were ignored because they are not supported (yet): ${parsedURI.ignoredOptions.mkString(", ")}")
 
       Success(connection(parsedURI.hosts.map(h => h._1 + ':' + h._2), parsedURI.options, parsedURI.authenticate.toSeq, name))
@@ -276,8 +275,7 @@ class MongoDriver(
     name: String,
     nodes: Seq[String],
     options: MongoConnectionOptions,
-    mongosystem: ActorRef
-  )
+    mongosystem: ActorRef)
 
   //private case class CloseWithTimeout(timeout: FiniteDuration)
 
@@ -287,12 +285,10 @@ class MongoDriver(
     val receive: Receive = {
       case AddConnection(name, nodes, opts, sys) => {
         logger.debug(
-          s"[$supervisorName] Add connection to the supervisor: $name"
-        )
+          s"[$supervisorName] Add connection to the supervisor: $name")
 
         val connection = new MongoConnection(
-          supervisorName, name, driver.system, sys, opts
-        )
+          supervisorName, name, driver.system, sys, opts)
         //connection.nodes = nodes
 
         driver.connectionMonitors.put(connection.monitor, connection)
@@ -302,8 +298,7 @@ class MongoDriver(
 
       case Terminated(actor) => {
         logger.debug(
-          s"[$supervisorName] Pool actor is terminated: ${actor.path}"
-        )
+          s"[$supervisorName] Pool actor is terminated: ${actor.path}")
 
         driver.connectionMonitors.remove(actor)
         ()
@@ -330,8 +325,7 @@ class MongoDriver(
       case Terminated(actor) =>
         driver.connectionMonitors.remove(actor).foreach { con =>
           logger.debug(
-            s"[$supervisorName] Connection is terminated: ${con.name}"
-          )
+            s"[$supervisorName] Connection is terminated: ${con.name}")
 
           if (isEmpty) context.stop(self)
         }
