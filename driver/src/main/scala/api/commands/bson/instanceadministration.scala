@@ -30,7 +30,8 @@ object BSONListCollectionNamesImplicits {
       fb <- cr.getAs[List[BSONDocument]]("firstBatch")
       ns <- wtColNames(fb, Nil)
     } yield CollectionNames(ns)).getOrElse[CollectionNames](
-      throw GenericDriverException("fails to read collection names"))
+      throw GenericDriverException("fails to read collection names")
+    )
   }
 
   @annotation.tailrec
@@ -66,9 +67,9 @@ object BSONDropCollectionImplicits {
             doc.getAs[String]("errmsg").
             exists(_ startsWith "ns not found")) {
             Success(false) // code not avail. before 3.x
-          }
-          else Failure(error)
-        }).map(DropCollectionResult(_)).get
+          } else Failure(error)
+        }
+      ).map(DropCollectionResult(_)).get
   }
 }
 
@@ -84,7 +85,8 @@ object BSONRenameCollectionImplicits {
       BSONDocument(
         "renameCollection" -> command.fullyQualifiedCollectionName,
         "to" -> command.fullyQualifiedTargetName,
-        "dropTarget" -> command.dropTarget)
+        "dropTarget" -> command.dropTarget
+      )
   }
 }
 
@@ -93,13 +95,15 @@ object BSONCreateImplicits {
     def write(capped: Capped): BSONDocument =
       BSONDocument(
         "size" -> capped.size,
-        "max" -> capped.max)
+        "max" -> capped.max
+      )
   }
   implicit object CreateWriter extends BSONDocumentWriter[ResolvedCollectionCommand[Create]] {
     def write(command: ResolvedCollectionCommand[Create]): BSONDocument =
       BSONDocument(
         "create" -> command.collection,
-        "autoIndexId" -> command.command.autoIndexId) ++ command.command.capped.fold(BSONDocument.empty)(capped => {
+        "autoIndexId" -> command.command.autoIndexId
+      ) ++ command.command.capped.fold(BSONDocument.empty)(capped => {
           CappedWriter.write(capped) ++ ("capped" -> true)
         })
   }
@@ -110,7 +114,8 @@ object BSONCollStatsImplicits {
     def write(command: ResolvedCollectionCommand[CollStats]): BSONDocument =
       BSONDocument(
         "collStats" -> command.collection,
-        "scale" -> command.command.scale)
+        "scale" -> command.command.scale
+      )
   }
 
   implicit object CollStatsResultReader extends DealingWithGenericCommandErrorsReader[CollStatsResult] {
@@ -133,7 +138,8 @@ object BSONCollStatsImplicits {
       },
       doc.getAs[BSONBooleanLike]("capped").fold(false)(_.toBoolean),
       doc.getAs[BSONNumberLike]("max").map(_.toLong),
-      doc.getAs[BSONNumberLike]("maxSize").map(_.toDouble))
+      doc.getAs[BSONNumberLike]("maxSize").map(_.toDouble)
+    )
   }
 }
 
@@ -149,7 +155,8 @@ object BSONDropIndexesImplicits {
     def write(command: ResolvedCollectionCommand[DropIndexes]): BSONDocument =
       BSONDocument(
         "dropIndexes" -> command.collection,
-        "index" -> command.command.index)
+        "index" -> command.command.index
+      )
   }
 
   implicit object BSONDropIndexesReader extends DealingWithGenericCommandErrorsReader[DropIndexesResult] {
@@ -184,24 +191,29 @@ object BSONListIndexesImplicits {
         msg <- doc.getAs[String]("errmsg")
         code <- doc.getAs[BSONNumberLike]("code").map(_.toInt)
       } yield DefaultWriteResult(
-        ok, n, Nil, None, Some(code), Some(msg))).get
+        ok, n, Nil, None, Some(code), Some(msg)
+      )).get
     }
 
     def read(doc: BSONDocument): List[Index] = (for {
       _ <- doc.getAs[BSONNumberLike]("ok").fold[Option[Unit]](
         throw GenericDriverException(
-          "the result of listIndexes must be ok")) { ok =>
+          "the result of listIndexes must be ok"
+        )
+      ) { ok =>
           if (ok.toInt == 1) Some(()) else {
             throw doc.asOpt[WriteResult].
               flatMap[Exception](WriteResult.lastError).
               getOrElse(new GenericDriverException(
-                s"fails to create index: ${BSONDocument pretty doc}"))
+                s"fails to create index: ${BSONDocument pretty doc}"
+              ))
           }
         }
       a <- doc.getAs[BSONDocument]("cursor")
       b <- a.getAs[List[BSONDocument]]("firstBatch")
     } yield b).fold[List[Index]](throw GenericDriverException(
-      "the cursor and firstBatch must be defined"))(readBatch(_, Nil).get)
+      "the cursor and firstBatch must be defined"
+    ))(readBatch(_, Nil).get)
 
   }
 }
@@ -217,7 +229,9 @@ object BSONCreateIndexesImplicits {
       BSONDocument(
         "createIndexes" -> cmd.collection,
         "indexes" -> cmd.command.indexes.map(NSIndex(
-          cmd.command.db + "." + cmd.collection, _)))
+          cmd.command.db + "." + cmd.collection, _
+        ))
+      )
     }
   }
 
@@ -228,10 +242,13 @@ object BSONCreateIndexesImplicits {
 
     def read(doc: BSONDocument): WriteResult =
       doc.getAs[BSONNumberLike]("ok").map(_.toInt).fold[WriteResult](
-        throw GenericDriverException("the count must be defined")) { n =>
+        throw GenericDriverException("the count must be defined")
+      ) { n =>
           doc.getAs[String]("errmsg").fold[WriteResult](
-            DefaultWriteResult(true, n, Nil, None, None, None))(
-              err => DefaultWriteResult(false, n, Nil, None, None, Some(err)))
+            DefaultWriteResult(true, n, Nil, None, None, None)
+          )(
+              err => DefaultWriteResult(false, n, Nil, None, None, Some(err))
+            )
         }
   }
 }
@@ -306,8 +323,7 @@ object BSONResyncImplicits {
     def read(doc: BSONDocument): ResyncResult.type = try {
       CommonImplicits.UnitBoxReader.read(doc)
       ResyncResult
-    }
-    catch {
+    } catch {
       case err: BSONCommandError if (notDeadWarn(err)) => {
         logger.warn(s"no resync done: ${err.errmsg mkString ""}")
         ResyncResult
@@ -356,7 +372,8 @@ object BSONCreateUserCommand
       "customData" -> create.customData,
       "roles" -> create.roles,
       "digestPassword" -> create.digestPassword,
-      "writeConcern" -> create.writeConcern)
+      "writeConcern" -> create.writeConcern
+    )
   }
 }
 

@@ -323,7 +323,8 @@ class MongoURISpec extends org.specs2.mutable.Specification {
     val fos = uri.options.failoverStrategy
 
     (1 to fos.retries).foldLeft(
-      StringBuilder.newBuilder ++= fos.initialDelay.toString) { (d, i) =>
+      StringBuilder.newBuilder ++= fos.initialDelay.toString
+    ) { (d, i) =>
         d ++= (fos.initialDelay * (fos.delayFactor(i).toLong)).toString
       }.result()
   }

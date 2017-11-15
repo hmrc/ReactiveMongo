@@ -67,11 +67,13 @@ trait DriverException extends ReactiveMongoException {
 
 /** A generic driver error. */
 case class GenericDriverException(
-  message: String) extends DriverException with NoStackTrace
+  message: String
+) extends DriverException with NoStackTrace
 
 sealed class ConnectionNotInitialized(
   val message: String,
-  override val cause: Throwable) extends DriverException
+  override val cause: Throwable
+) extends DriverException
     with Product with java.io.Serializable with Serializable with Equals {
 
   @deprecated(message = "Use constructor with cause", since = "0.12-RC1")
@@ -129,13 +131,15 @@ case class ConnectionException(message: String) extends DriverException
 /** A generic error thrown by a MongoDB node. */
 case class GenericDatabaseException(
     message: String,
-    code: Option[Int]) extends DatabaseException {
+    code: Option[Int]
+) extends DatabaseException {
   val originalDocument = None
 }
 
 /** An error thrown by a MongoDB node (containing the original document of the error). */
 class DetailedDatabaseException(
-    doc: BSONDocument) extends DatabaseException with NoStackTrace {
+    doc: BSONDocument
+) extends DatabaseException with NoStackTrace {
 
   val originalDocument = Some(doc)
   lazy val message = doc.getAs[BSONString]("$err").map(_.value).getOrElse("$err is not present, unknown error")

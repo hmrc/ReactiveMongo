@@ -37,7 +37,8 @@ object ExpectingResponse {
  */
 case class RequestMakerExpectingResponse(
   requestMaker: RequestMaker,
-  isMongo26WriteOp: Boolean) extends ExpectingResponse
+  isMongo26WriteOp: Boolean
+) extends ExpectingResponse
 
 /**
  * A checked write request expecting a response.
@@ -45,7 +46,8 @@ case class RequestMakerExpectingResponse(
  * @param checkedWriteRequest The request maker.
  */
 case class CheckedWriteRequestExpectingResponse(
-  checkedWriteRequest: CheckedWriteRequest) extends ExpectingResponse
+  checkedWriteRequest: CheckedWriteRequest
+) extends ExpectingResponse
 
 /**
  * Message to close all active connections.
@@ -67,10 +69,12 @@ private[reactivemongo] object ChannelUnavailable {
 }
 
 private[reactivemongo] case class ChannelDisconnected(
-  channelId: Int) extends ChannelUnavailable
+  channelId: Int
+) extends ChannelUnavailable
 
 private[reactivemongo] case class ChannelClosed(
-  channelId: Int) extends ChannelUnavailable
+  channelId: Int
+) extends ChannelUnavailable
 
 /** Message sent when the primary has been discovered. */
 case class PrimaryAvailable(metadata: ProtocolMetadata)

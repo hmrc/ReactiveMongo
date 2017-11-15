@@ -38,7 +38,8 @@ object SortOrder {
 case class QueryOpts(
     skipN: Int = 0,
     batchSizeN: Int = 0,
-    flagsN: Int = 0) extends QueryOps {
+    flagsN: Int = 0
+) extends QueryOps {
   type Self = QueryOpts
 
   /** Sets the query flags. */

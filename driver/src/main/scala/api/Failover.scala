@@ -62,8 +62,7 @@ class Failover[T](message: T, connection: MongoConnection, strategy: FailoverStr
           logger.debug(s"Got an error, retrying... (try #${`try`} is scheduled in ${delay.toMillis} ms)", e)
 
           connection.actorSystem.scheduler.scheduleOnce(delay)(send(`try`))
-        }
-        else {
+        } else {
           // generally that means that the primary is not available or the nodeset is unreachable
           logger.error("Got an error, no more attempts to do. Completing with a failure...", e)
           promise.failure(e)
@@ -71,7 +70,8 @@ class Failover[T](message: T, connection: MongoConnection, strategy: FailoverStr
 
       case Failure(e) => {
         logger.trace(
-          "Got an non retryable error, completing with a failure...", e)
+          "Got an non retryable error, completing with a failure...", e
+        )
         promise.failure(e)
       }
 
@@ -117,8 +117,7 @@ class Failover2[A](producer: () => Future[A], connection: MongoConnection, strat
   // as a result Future.failed that can be recovered.
   private def next(): Future[A] = try {
     producer()
-  }
-  catch {
+  } catch {
     case producerErr: Throwable => Future.failed[A](producerErr)
   }
 
@@ -136,8 +135,7 @@ class Failover2[A](producer: () => Future[A], connection: MongoConnection, strat
           trace(s"[$lnm] Got an error, retrying... (try #${`try`} is scheduled in ${delay.toMillis} ms)", e)
 
           after(delay, connection.actorSystem.scheduler)(send(`try`))
-        }
-        else {
+        } else {
           // generally that means that the primary is not available
           // or the nodeset is unreachable
           logger.error(s"[$lnm] Got an error, no more attempts to do. Completing with a failure... ", e)

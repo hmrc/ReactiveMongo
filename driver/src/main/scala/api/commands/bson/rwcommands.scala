@@ -12,7 +12,8 @@ object BSONGetLastErrorImplicits {
         "getlasterror" -> 1,
         "w" -> w,
         "j" -> (if (wc.j) Some(true) else None),
-        "wtimeout" -> wc.wtimeout)
+        "wtimeout" -> wc.wtimeout
+      )
     }
   }
 
@@ -40,7 +41,8 @@ object BSONGetLastErrorImplicits {
       },
       wtimeout = doc.getAs[Boolean]("wtimeout").getOrElse(false),
       waited = doc.getAs[Int]("waited"),
-      wtime = doc.getAs[Int]("wtime"))
+      wtime = doc.getAs[Int]("wtime")
+    )
   }
 }
 
@@ -59,7 +61,8 @@ object BSONCommonWriteCommandsImplicits {
     def write(wc: WriteConcern): BSONDocument = BSONDocument(
       "w" -> wc.w,
       "j" -> (if (wc.j) Some(true) else None),
-      "wtimeout" -> wc.wtimeout)
+      "wtimeout" -> wc.wtimeout
+    )
   }
 
   implicit object WriteErrorReader extends BSONDocumentReader[WriteError] {
@@ -67,7 +70,8 @@ object BSONCommonWriteCommandsImplicits {
       WriteError(
         index = doc.getAs[Int]("index").get,
         code = doc.getAs[Int]("code").get,
-        errmsg = doc.getAs[String]("errmsg").get)
+        errmsg = doc.getAs[String]("errmsg").get
+      )
   }
 
   implicit object WriteConcernErrorReader
@@ -75,7 +79,8 @@ object BSONCommonWriteCommandsImplicits {
     def read(doc: BSONDocument): WriteConcernError =
       WriteConcernError(
         code = doc.getAs[Int]("code").get,
-        errmsg = doc.getAs[String]("errmsg").get)
+        errmsg = doc.getAs[String]("errmsg").get
+      )
   }
 
   implicit object DefaultWriteResultReader
@@ -87,7 +92,8 @@ object BSONCommonWriteCommandsImplicits {
         writeErrors = doc.getAs[Seq[WriteError]]("writeErrors").getOrElse(Seq.empty),
         writeConcernError = doc.getAs[WriteConcernError]("writeConcernError"),
         code = doc.getAs[Int]("code"),
-        errmsg = doc.getAs[String]("errmsg"))
+        errmsg = doc.getAs[String]("errmsg")
+      )
     }
   }
 }
@@ -105,8 +111,9 @@ object BSONInsertCommandImplicits {
       "insert" -> command.collection,
       "documents" -> BSONArray(command.command.documents),
       "ordered" -> command.command.ordered,
-      "writeConcern" -> command.command.writeConcern // TODO: 3.4; bypassDocumentValidation: boolean
-      )
+      "writeConcern" -> command.command.writeConcern
+    // TODO: 3.4; bypassDocumentValidation: boolean
+    )
   }
 }
 
@@ -123,7 +130,8 @@ object BSONUpdateCommandImplicits {
       "q" -> element.q,
       "u" -> element.u,
       "upsert" -> element.upsert,
-      "multi" -> element.multi)
+      "multi" -> element.multi
+    )
   }
 
   implicit object UpdateWriter extends BSONDocumentWriter[ResolvedCollectionCommand[Update]] {
@@ -131,13 +139,15 @@ object BSONUpdateCommandImplicits {
       "update" -> update.collection,
       "updates" -> update.command.documents,
       "ordered" -> update.command.ordered,
-      "writeConcern" -> update.command.writeConcern)
+      "writeConcern" -> update.command.writeConcern
+    )
   }
 
   implicit object UpsertedReader extends BSONDocumentReader[Upserted] {
     def read(doc: BSONDocument) = Upserted(
       index = doc.getAs[Int]("index").get,
-      _id = doc.get("_id").get)
+      _id = doc.get("_id").get
+    )
   }
 
   implicit object UpdateResultReader extends DealingWithGenericCommandErrorsReader[UpdateResult] {
@@ -150,7 +160,7 @@ object BSONUpdateCommandImplicits {
       writeConcernError = doc.getAs[WriteConcernError]("writeConcernError"),
       code = doc.getAs[Int]("code"), //FIXME There is no corresponding official docs.
       errmsg = doc.getAs[String]("errmsg") //FIXME There is no corresponding official docs.
-      )
+    )
   }
 }
 
@@ -166,7 +176,8 @@ object BSONDeleteCommandImplicits {
     def write(element: DeleteElement): BSONDocument = {
       BSONDocument(
         "q" -> element.q,
-        "limit" -> element.limit)
+        "limit" -> element.limit
+      )
     }
   }
 
@@ -176,7 +187,8 @@ object BSONDeleteCommandImplicits {
         "delete" -> delete.collection,
         "deletes" -> delete.command.deletes,
         "ordered" -> delete.command.ordered,
-        "writeConcern" -> delete.command.writeConcern)
+        "writeConcern" -> delete.command.writeConcern
+      )
     }
   }
 }

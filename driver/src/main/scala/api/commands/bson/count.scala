@@ -34,7 +34,8 @@ object BSONCountCommandImplicits {
         "query" -> count.command.query,
         "limit" -> count.command.limit,
         "skip" -> count.command.skip,
-        "hint" -> count.command.hint)
+        "hint" -> count.command.hint
+      )
   }
 
   implicit object CountResultReader

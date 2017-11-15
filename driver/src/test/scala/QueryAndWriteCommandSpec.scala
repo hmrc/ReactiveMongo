@@ -61,12 +61,12 @@ class QueryAndWriteCommandSpec extends org.specs2.mutable.Specification {
         @inline def docs = (0 until n).toStream.map { i =>
           if (i == 0 || i == 1529 || i == 3026 || i == 19862) {
             BSONDocument("bulk" -> true, "i" -> i, "plop" -> -3)
-          }
-          else BSONDocument("bulk" -> true, "i" -> i, "plop" -> i)
+          } else BSONDocument("bulk" -> true, "i" -> i, "plop" -> i)
         }
 
         c.indexesManager.ensure(
-          Index(List("plop" -> Ascending), unique = true)).map(_ => {}).
+          Index(List("plop" -> Ascending), unique = true)
+        ).map(_ => {}).
           aka("index") must beEqualTo({}).await(1, timeout) and {
             c.bulkInsert(docs, false).map(_ => {}) must beEqualTo({}).
               await(1, timeout * (n / 2L)) and {
@@ -86,7 +86,8 @@ class QueryAndWriteCommandSpec extends org.specs2.mutable.Specification {
       s"${nDocs / 1000} with the slow connection" in { implicit ee: EE =>
         bulkSpec(
           slowDb(newName(nDocs / 1000)),
-          nDocs / 1000, nDocs / 1000, slowTimeout)
+          nDocs / 1000, nDocs / 1000, slowTimeout
+        )
       }
     }
 

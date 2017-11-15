@@ -42,9 +42,9 @@ class CursorSpec extends org.specs2.mutable.Specification
             specCon = con,
             failover = slowFailover,
             tout = slowTimeout,
-            driver = drv)(_: ExecutionContext))
-        }
-        catch {
+            driver = drv
+          )(_: ExecutionContext))
+        } catch {
           case err: Throwable =>
             logger.error(s"[${con.name}] Fails to resolve the slow default collection", err)
             throw err
@@ -56,8 +56,7 @@ class CursorSpec extends org.specs2.mutable.Specification
 
         try {
           scol(n, slowFailover, slowTimeout, drv, con)(ec)
-        }
-        catch {
+        } catch {
           case err: Throwable =>
             logger.error(s"[${con.name}] Fails to resolve the slow spec collection", err)
 
@@ -79,7 +78,8 @@ class CursorSpec extends org.specs2.mutable.Specification
 
               cursor.foldResponsesM({}, 128)(
                 { (_, _) => Future[Cursor.State[Unit]](sys.error("Foo")) },
-                Cursor.FailOnError[Unit](onError)).recover({ case _ => count }).
+                Cursor.FailOnError[Unit](onError)
+              ).recover({ case _ => count }).
                 aka("folding") must beEqualTo(1).await(1, timeout)
 
           }
@@ -95,7 +95,8 @@ class CursorSpec extends org.specs2.mutable.Specification
 
             cursor.foldResponses({}, 128)(
               { (_, _) => sys.error("Foo"): Cursor.State[Unit] },
-              Cursor.FailOnError[Unit](onError)).recover({ case _ => count }).
+              Cursor.FailOnError[Unit](onError)
+            ).recover({ case _ => count }).
               aka("folding") must beEqualTo(1).await(1, timeout)
           }
 
@@ -109,7 +110,8 @@ class CursorSpec extends org.specs2.mutable.Specification
             val cursor = c.find(matchAll("cursorspec13")).cursor()
 
             cursor.foldResponses[Unit](sys.error("Foo"), 128)(
-              (_, _) => Cursor.Cont({}), Cursor.FailOnError[Unit](onError)).
+              (_, _) => Cursor.Cont({}), Cursor.FailOnError[Unit](onError)
+            ).
               recover { case _ => count } must beEqualTo(0).await(1, timeout)
           }
 
@@ -127,7 +129,8 @@ class CursorSpec extends org.specs2.mutable.Specification
               map(_ => {}) must beEqualTo({}).await(1, timeout) and {
                 cursor.foldResponsesM({}, 128)(
                   (_, _) => Future(Cursor.Cont({})),
-                  Cursor.FailOnError[Unit](onError)).
+                  Cursor.FailOnError[Unit](onError)
+                ).
                   recover { case _ => count } must beEqualTo(1).
                   await(1, timeout)
               }
@@ -137,9 +140,11 @@ class CursorSpec extends org.specs2.mutable.Specification
         "when folding responses with the default connection" >> {
           foldRespSpec(
             scol(
-              driver = drv, specCon = con(drv))(_: ExecutionContext),
+              driver = drv, specCon = con(drv)
+            )(_: ExecutionContext),
             { (ec, n) => scol(n, driver = drv, specCon = con(drv))(ec) },
-            timeout)
+            timeout
+          )
         }
 
         "when folding responses with the slow connection" >> {
@@ -164,7 +169,8 @@ class CursorSpec extends org.specs2.mutable.Specification
               }
               val c = defaultColl(ee.ec)
               val cursor = c.find(matchAll(s"$tag-spec15")).options(
-                QueryOpts(batchSizeN = 2)).cursor()
+                QueryOpts(batchSizeN = 2)
+              ).cursor()
 
               (cursor.enumerateResponses(10, true) |>>> inc).
                 recover({ case _ => count }).
@@ -181,7 +187,8 @@ class CursorSpec extends org.specs2.mutable.Specification
 
             val c = specCol(ee.ec, System.identityHashCode(inc).toString)
             val cursor = c.find(matchAll(s"$tag-spec16")).options(
-              QueryOpts(batchSizeN = 2)).cursor()
+              QueryOpts(batchSizeN = 2)
+            ).cursor()
 
             (cursor.enumerateResponses(10, true) |>>> inc).
               recover({ case _ => count }) must beEqualTo(1).await(1, timeout)
@@ -208,7 +215,8 @@ class CursorSpec extends org.specs2.mutable.Specification
 
         "when enumerating responses with the default connection" >> {
           enumRespSpec("default", scol(
-            driver = drv, specCon = con(drv))(_: ExecutionContext),
+            driver = drv, specCon = con(drv)
+          )(_: ExecutionContext),
             { (ec, n) => scol(n, driver = drv, specCon = con(drv))(ec) },
             timeout)
         }
@@ -232,11 +240,13 @@ class CursorSpec extends org.specs2.mutable.Specification
             }
             val c = scol(driver = drv)
             val cursor = c.find(matchAll("cursorspec18")).options(
-              QueryOpts(batchSizeN = 64)).cursor()
+              QueryOpts(batchSizeN = 64)
+            ).cursor()
 
             cursor.foldBulksM({}, 128)(
               { (_, _) => Future[Cursor.State[Unit]](sys.error("Foo")) },
-              Cursor.FailOnError[Unit](onError)).recover({ case _ => count }).
+              Cursor.FailOnError[Unit](onError)
+            ).recover({ case _ => count }).
               aka("folding") must beEqualTo(1).await(1, timeout)
 
         }
@@ -249,13 +259,16 @@ class CursorSpec extends org.specs2.mutable.Specification
           }
           val c = scol(
             System.identityHashCode(onError _).toString,
-            driver = drv)
+            driver = drv
+          )
           val cursor = c.find(matchAll("cursorspec19")).options(
-            QueryOpts(batchSizeN = 64)).cursor()
+            QueryOpts(batchSizeN = 64)
+          ).cursor()
 
           cursor.foldBulks({}, 128)(
             { (_, _) => sys.error("Foo"): Cursor.State[Unit] },
-            Cursor.FailOnError[Unit](onError)).recover({ case _ => count }).
+            Cursor.FailOnError[Unit](onError)
+          ).recover({ case _ => count }).
             aka("folding") must beEqualTo(1).await(1, timeout)
         }
 
@@ -266,14 +279,17 @@ class CursorSpec extends org.specs2.mutable.Specification
             count = count + 1
           }
           val c = scol(
-            System.identityHashCode(onError _).toString, driver = drv)
+            System.identityHashCode(onError _).toString, driver = drv
+          )
 
           val cursor = c.find(matchAll("cursorspec20")).options(
-            QueryOpts(batchSizeN = 64)).cursor()
+            QueryOpts(batchSizeN = 64)
+          ).cursor()
 
           cursor.foldBulksM[Unit](sys.error("Foo"), 128)(
             (_, _) => Future(Cursor.Cont({})),
-            Cursor.FailOnError[Unit](onError)).
+            Cursor.FailOnError[Unit](onError)
+          ).
             recover({ case _ => count }) must beEqualTo(0).await(1, timeout)
 
         }
@@ -286,14 +302,16 @@ class CursorSpec extends org.specs2.mutable.Specification
           }
           val c = scol(driver = drv)
           val cursor = c.find(matchAll("cursorspec21")).options(
-            QueryOpts(batchSizeN = 64)).cursor()
+            QueryOpts(batchSizeN = 64)
+          ).cursor()
 
           // Close connection to make the related cursor erroneous
           c.db.connection.askClose()(timeout).
             map(_ => {}) must beEqualTo({}).await(1, timeout) and {
               cursor.foldBulks({}, 128)(
                 { (_, _) => Cursor.Cont({}) },
-                Cursor.FailOnError[Unit](onError)).
+                Cursor.FailOnError[Unit](onError)
+              ).
                 recover({ case _ => count }) must beEqualTo(1).await(1, timeout)
             }
         }
@@ -311,7 +329,8 @@ class CursorSpec extends org.specs2.mutable.Specification
             }
             val c = scol(driver = drv)
             val cursor = c.find(matchAll("cursorspec22")).options(
-              QueryOpts(batchSizeN = 2)).cursor()
+              QueryOpts(batchSizeN = 2)
+            ).cursor()
 
             (cursor.enumerateBulks(10, true) |>>> inc).
               recover({ case _ => count }) must beEqualTo(1).await(1, timeout)
@@ -326,7 +345,8 @@ class CursorSpec extends org.specs2.mutable.Specification
           }
           val c = scol(System.identityHashCode(inc).toString, driver = drv)
           val cursor = c.find(matchAll("cursorspec23")).options(
-            QueryOpts(batchSizeN = 2)).cursor()
+            QueryOpts(batchSizeN = 2)
+          ).cursor()
 
           (cursor.enumerateBulks(10, true) |>>> inc).
             recover({ case _ => count }) must beEqualTo(1).
@@ -365,7 +385,8 @@ class CursorSpec extends org.specs2.mutable.Specification
 
             cursor.foldWhileM({}, 128)(
               { (_, _) => Future[Cursor.State[Unit]](sys.error("Foo")) },
-              Cursor.FailOnError[Unit](onError)).recover({ case _ => count }).
+              Cursor.FailOnError[Unit](onError)
+            ).recover({ case _ => count }).
               aka("folding") must beEqualTo(1).await(1, timeout)
 
           }
@@ -380,7 +401,8 @@ class CursorSpec extends org.specs2.mutable.Specification
             val cursor = c.find(matchAll("cursorspec26")).cursor()
 
             cursor.foldWhile[Unit](sys.error("Foo"), 128)(
-              (_, _) => Cursor.Cont({}), Cursor.FailOnError[Unit](onError)).
+              (_, _) => Cursor.Cont({}), Cursor.FailOnError[Unit](onError)
+            ).
               recover({ case _ => count }) must beEqualTo(0).
               await(1, timeout)
           }
@@ -399,7 +421,8 @@ class CursorSpec extends org.specs2.mutable.Specification
               map(_ => {}) must beEqualTo({}).await(1, timeout) and {
                 cursor.foldWhile({}, 128)(
                   (_, _) => Cursor.Cont({}),
-                  Cursor.FailOnError[Unit](onError)).
+                  Cursor.FailOnError[Unit](onError)
+                ).
                   recover({ case _ => count }).
                   aka("folding") must beEqualTo(1).await(1, timeout)
               }
@@ -409,7 +432,8 @@ class CursorSpec extends org.specs2.mutable.Specification
         "when folding documents with the default connection" >> {
           foldWhileSpec(
             scol(driver = drv)(_: ExecutionContext),
-            { (ec, n) => scol(n, driver = drv)(ec) }, timeout)
+            { (ec, n) => scol(n, driver = drv)(ec) }, timeout
+          )
         }
 
         "when enumerating responses with the slow connection" >> {
@@ -461,7 +485,8 @@ class CursorSpec extends org.specs2.mutable.Specification
         "when enumerating documents with the default connection" >> {
           enumSpec(
             scol(driver = drv)(_: ExecutionContext),
-            { (ec, n) => scol(n, driver = drv)(ec) }, timeout)
+            { (ec, n) => scol(n, driver = drv)(ec) }, timeout
+          )
 
         }
 
@@ -489,9 +514,9 @@ class CursorSpec extends org.specs2.mutable.Specification
             specCon = con,
             failover = slowFailover,
             tout = slowTimeout,
-            driver = drv)(_: ExecutionContext))
-        }
-        catch {
+            driver = drv
+          )(_: ExecutionContext))
+        } catch {
           case err: Throwable =>
             logger.error(s"[${con.name}] Fails to resolve the slow default collection", err)
             throw err
@@ -503,8 +528,7 @@ class CursorSpec extends org.specs2.mutable.Specification
 
         try {
           scol(n, slowFailover, slowTimeout, drv, con)(ec)
-        }
-        catch {
+        } catch {
           case err: Throwable =>
             logger.error(s"[${con.name}] Fails to resolve the slow spec collection", err)
 
@@ -515,7 +539,8 @@ class CursorSpec extends org.specs2.mutable.Specification
       { // .foldResponses
         def foldRespSpec(defaultColl: ExecutionContext => BSONCollection, specCol: (ExecutionContext, String) => BSONCollection, timeout: FiniteDuration) = {
           def delayedTimeout = FiniteDuration(
-            (timeout.toMillis * 1.25D).toLong, MILLISECONDS)
+            (timeout.toMillis * 1.25D).toLong, MILLISECONDS
+          )
 
           "if fails while processing with existing documents" in {
             implicit ee: EE =>
@@ -530,7 +555,8 @@ class CursorSpec extends org.specs2.mutable.Specification
               // retry on the initial failure - until the max (128) is reached
               cursor.foldResponsesM({}, 128)(
                 { (_, _) => Future[Cursor.State[Unit]](sys.error("Foo")) },
-                Cursor.ContOnError[Unit](onError)).map(_ => count) must beEqualTo(128).await(2, delayedTimeout)
+                Cursor.ContOnError[Unit](onError)
+              ).map(_ => count) must beEqualTo(128).await(2, delayedTimeout)
           }
 
           "if fails while processing w/o documents" in { implicit ee: EE =>
@@ -544,7 +570,8 @@ class CursorSpec extends org.specs2.mutable.Specification
 
             cursor.foldResponses({}, 64)(
               { (_, _) => sys.error("Foo"): Cursor.State[Unit] },
-              Cursor.ContOnError[Unit](onError)).map(_ => count) must beEqualTo(64).await(2, delayedTimeout)
+              Cursor.ContOnError[Unit](onError)
+            ).map(_ => count) must beEqualTo(64).await(2, delayedTimeout)
           }
 
           "if fails with initial value" in { implicit ee: EE =>
@@ -558,7 +585,8 @@ class CursorSpec extends org.specs2.mutable.Specification
 
             cursor.foldResponsesM[Unit](sys.error("Foo"), 128)(
               (_, _) => Future(Cursor.Cont({})),
-              Cursor.ContOnError[Unit](onError)).
+              Cursor.ContOnError[Unit](onError)
+            ).
               recover({ case _ => count }) must beEqualTo(0).
               await(2, delayedTimeout)
           }
@@ -577,7 +605,8 @@ class CursorSpec extends org.specs2.mutable.Specification
               map(_ => {}) must beEqualTo({}).await(1, timeout) and {
                 cursor.foldResponses({}, 128)(
                   (_, _) => Cursor.Cont({}),
-                  Cursor.ContOnError[Unit](onError)).map(_ => count).
+                  Cursor.ContOnError[Unit](onError)
+                ).map(_ => count).
                   aka("folding") must beEqualTo(1).await(2, delayedTimeout)
               }
           }
@@ -586,7 +615,8 @@ class CursorSpec extends org.specs2.mutable.Specification
         "when folding responses with the default connection" >> {
           foldRespSpec(
             scol(driver = drv)(_: ExecutionContext),
-            { (ec, n) => scol(n, driver = drv)(ec) }, timeout)
+            { (ec, n) => scol(n, driver = drv)(ec) }, timeout
+          )
         }
 
         "when folding responses with the slow connection" >> {
@@ -601,7 +631,8 @@ class CursorSpec extends org.specs2.mutable.Specification
       { // .enumerateResponses
         def enumRespSpec(defaultColl: ExecutionContext => BSONCollection, specCol: (ExecutionContext, String) => BSONCollection, timeout: FiniteDuration) = {
           def delayedTimeout = FiniteDuration(
-            (timeout.toMillis * 1.25D).toLong, MILLISECONDS)
+            (timeout.toMillis * 1.25D).toLong, MILLISECONDS
+          )
 
           "if fails while processing with existing documents" in {
             implicit ee: EE =>
@@ -615,7 +646,8 @@ class CursorSpec extends org.specs2.mutable.Specification
               }
               val c = defaultColl(ee.ec)
               val cursor = c.find(matchAll("cursorspec34")).options(QueryOpts(
-                batchSizeN = 4)).cursor()
+                batchSizeN = 4
+              )).cursor()
 
               (cursor.enumerateResponses(128, false) |>>> inc).map(_ => count).
                 aka("enumerating") must beEqualTo(16).await(2, delayedTimeout)
@@ -659,7 +691,8 @@ class CursorSpec extends org.specs2.mutable.Specification
         "when enumerating responses with the default connection" >> {
           enumRespSpec(
             scol(driver = drv)(_: ExecutionContext),
-            { (ec, n) => scol(n, driver = drv)(ec) }, timeout)
+            { (ec, n) => scol(n, driver = drv)(ec) }, timeout
+          )
 
         }
 
@@ -674,7 +707,8 @@ class CursorSpec extends org.specs2.mutable.Specification
 
       "when folding bulks" >> {
         lazy val delayedTimeout = FiniteDuration(
-          (timeout.toMillis * 1.25D).toLong, MILLISECONDS)
+          (timeout.toMillis * 1.25D).toLong, MILLISECONDS
+        )
 
         "if fails while processing with existing documents" in {
           implicit ee: EE =>
@@ -688,7 +722,8 @@ class CursorSpec extends org.specs2.mutable.Specification
 
             cursor.foldBulks({}, 128)(
               { (_, _) => sys.error("Foo"): Cursor.State[Unit] },
-              Cursor.ContOnError[Unit](onError)).map(_ => count).
+              Cursor.ContOnError[Unit](onError)
+            ).map(_ => count).
               aka("folding") must beEqualTo(128).await(2, delayedTimeout)
         }
 
@@ -700,13 +735,16 @@ class CursorSpec extends org.specs2.mutable.Specification
           }
           val c = scol(
             System.identityHashCode(onError _).toString,
-            driver = drv)
+            driver = drv
+          )
           val cursor = c.find(matchAll("cursorspec38")).options(
-            QueryOpts(batchSizeN = 64)).cursor()
+            QueryOpts(batchSizeN = 64)
+          ).cursor()
 
           cursor.foldBulksM({}, 64)(
             { (_, _) => Future[Cursor.State[Unit]](sys.error("Foo")) },
-            Cursor.ContOnError[Unit](onError)).map(_ => count).
+            Cursor.ContOnError[Unit](onError)
+          ).map(_ => count).
             aka("folding") must beEqualTo(64).await(2, delayedTimeout)
 
         }
@@ -719,12 +757,15 @@ class CursorSpec extends org.specs2.mutable.Specification
           }
           val c = scol(
             System.identityHashCode(onError _).toString,
-            driver = drv)
+            driver = drv
+          )
           val cursor = c.find(matchAll("cursorspec39")).options(
-            QueryOpts(batchSizeN = 64)).cursor()
+            QueryOpts(batchSizeN = 64)
+          ).cursor()
 
           cursor.foldBulks[Unit](sys.error("Foo"), 128)(
-            (_, _) => Cursor.Cont({}), Cursor.ContOnError[Unit](onError)).
+            (_, _) => Cursor.Cont({}), Cursor.ContOnError[Unit](onError)
+          ).
             recover({ case _ => count }) must beEqualTo(0).
             await(2, delayedTimeout)
         }
@@ -737,14 +778,16 @@ class CursorSpec extends org.specs2.mutable.Specification
           }
           val c = scol(driver = drv)
           val cursor = c.find(matchAll("cursorspec40")).options(
-            QueryOpts(batchSizeN = 64)).cursor()
+            QueryOpts(batchSizeN = 64)
+          ).cursor()
 
           // Close connection to make the related cursor erroneous
           c.db.connection.askClose()(timeout).
             map(_ => {}) must beEqualTo({}).await(1, timeout) and {
               cursor.foldBulks({}, 128)(
                 { (_, _) => Cursor.Cont({}) },
-                Cursor.ContOnError[Unit](onError)).
+                Cursor.ContOnError[Unit](onError)
+              ).
                 map(_ => count) must beEqualTo(1).await(2, delayedTimeout)
             }
         }
@@ -752,7 +795,8 @@ class CursorSpec extends org.specs2.mutable.Specification
 
       "when enumerating bulks" >> {
         lazy val delayedTimeout = FiniteDuration(
-          (timeout.toMillis * 1.25D).toLong, MILLISECONDS)
+          (timeout.toMillis * 1.25D).toLong, MILLISECONDS
+        )
 
         "if fails while processing with existing documents" in {
           implicit ee: EE =>
@@ -766,7 +810,8 @@ class CursorSpec extends org.specs2.mutable.Specification
             }
             val c = scol(driver = drv, failover = slowFailover)
             val cursor = c.find(matchAll("cursorspec41")).options(QueryOpts(
-              batchSizeN = 4)).cursor()
+              batchSizeN = 4
+            )).cursor()
 
             (cursor.enumerateBulks(128, false) |>>> inc).map(_ => count).
               aka("enumerating") must beEqualTo(16).await(2, delayedTimeout)
@@ -808,7 +853,8 @@ class CursorSpec extends org.specs2.mutable.Specification
       { // .foldWhile
         def foldWhileSpec(defaultColl: ExecutionContext => BSONCollection, specCol: (ExecutionContext, String) => BSONCollection, timeout: FiniteDuration) = {
           def delayedTimeout = FiniteDuration(
-            (timeout.toMillis * 1.25D).toLong, MILLISECONDS)
+            (timeout.toMillis * 1.25D).toLong, MILLISECONDS
+          )
 
           "if fails while processing with existing documents" in {
             implicit ee: EE =>
@@ -822,7 +868,8 @@ class CursorSpec extends org.specs2.mutable.Specification
 
               cursor.foldWhileM({}, 128)(
                 { (_, _) => Future[Cursor.State[Unit]](sys.error("Foo")) },
-                Cursor.ContOnError[Unit](onError)).map(_ => count).
+                Cursor.ContOnError[Unit](onError)
+              ).map(_ => count).
                 aka("folding") must beEqualTo(128).await(2, delayedTimeout)
 
           }
@@ -837,7 +884,8 @@ class CursorSpec extends org.specs2.mutable.Specification
             val cursor = c.find(matchAll("cursorspec45")).cursor()
 
             cursor.foldWhile[Unit](sys.error("Foo"), 128)(
-              (_, _) => Cursor.Cont({}), Cursor.ContOnError[Unit](onError)).
+              (_, _) => Cursor.Cont({}), Cursor.ContOnError[Unit](onError)
+            ).
               recover({ case _ => count }) must beEqualTo(0).
               await(2, delayedTimeout)
           }
@@ -856,7 +904,8 @@ class CursorSpec extends org.specs2.mutable.Specification
               map(_ => {}) must beEqualTo({}).await(1, timeout) and {
                 cursor.foldWhileM({}, 64)(
                   (_, _) => Future(Cursor.Cont({})),
-                  Cursor.ContOnError[Unit](onError)).map(_ => count).
+                  Cursor.ContOnError[Unit](onError)
+                ).map(_ => count).
                   aka("folding") must beEqualTo(1).await(1, timeout)
 
               }
@@ -866,7 +915,8 @@ class CursorSpec extends org.specs2.mutable.Specification
         "when folding documents with the default connection" >> {
           foldWhileSpec(
             scol(driver = drv)(_: ExecutionContext),
-            { (ec, n) => scol(n, driver = drv)(ec) }, timeout)
+            { (ec, n) => scol(n, driver = drv)(ec) }, timeout
+          )
         }
 
         "when folding documents with the default connection" >> {
@@ -892,7 +942,8 @@ class CursorSpec extends org.specs2.mutable.Specification
               }
               val c = defaultColl(ee.ec)
               val cursor = c.find(matchAll("cursorspec47")).options(QueryOpts(
-                batchSizeN = 4)).cursor()
+                batchSizeN = 4
+              )).cursor()
 
               (cursor.enumerate(128, false) |>>> inc).map(_ => count).
                 aka("enumerating") must beEqualTo(32).await(1, timeout)
@@ -935,7 +986,8 @@ class CursorSpec extends org.specs2.mutable.Specification
         "when enumerating documents with the default connection" >> {
           enumSpec(
             scol(driver = drv)(_: ExecutionContext),
-            { (ec, n) => scol(n, driver = drv)(ec) }, timeout)
+            { (ec, n) => scol(n, driver = drv)(ec) }, timeout
+          )
         }
 
         "when enumerating documents with the slow connection" >> {

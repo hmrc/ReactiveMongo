@@ -1,14 +1,26 @@
 import scala.concurrent.{ Await, ExecutionContext, Future, Promise }
 import scala.concurrent.duration._
+
 import akka.actor.{ Actor, ActorRef, ActorSystem, Props }
+
 import reactivemongo.bson.BSONDocument
-import reactivemongo.core.actors.{ PrimaryAvailable, RegisterMonitor, SetAvailable }
+
+import reactivemongo.core.actors.{
+  PrimaryAvailable,
+  RegisterMonitor,
+  SetAvailable
+}
+
 import reactivemongo.core.nodeset.{ Authenticate, ProtocolMetadata }
-import reactivemongo.core.commands.{ FailedAuthentication, SuccessfulAuthentication }
-import reactivemongo.core.actors.Exceptions
-import Exceptions.PrimaryUnavailableException
-import reactivemongo.api.{ DefaultDB, FailoverStrategy, MongoDriver, X509Authentication }
+import reactivemongo.core.commands.{
+  FailedAuthentication,
+  SuccessfulAuthentication
+}
+import reactivemongo.core.actors.Exceptions, Exceptions.PrimaryUnavailableException
+
+import reactivemongo.api.{ DefaultDB, FailoverStrategy, MongoDriver }
 import reactivemongo.api.commands.DBUserRole
+
 import org.specs2.concurrent.{ ExecutionEnv => EE }
 
 class DriverSpec extends org.specs2.mutable.Specification {
