@@ -2,6 +2,8 @@
 
 ## Creating certificates for SSL and X509 authentication
 
+If you want to just TLS and not x509 use [this script](mongo_tls_setup.sh).
+
 Note: This following instructions assumes you are using either MongoDB version 3.2 or 3.4 and has been tested for both. Prior and later versions may require different configuration files.
 
 First of all, the certification creation is borrowed from the [following blog post](http://demarcsek92.blogspot.co.uk/2014/05/mongodb-ssl-setup.html) and is adapted for our tests.
