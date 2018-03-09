@@ -1,0 +1,5 @@
+leakDetectionExemptions:
+ - ruleId: 'cert_1'
+   filePath: '/.travis_scripts/server.pem'
+ - ruleId: 'filename_private_key_5'
+   filePath: '/.travis_scripts/server.pem'
