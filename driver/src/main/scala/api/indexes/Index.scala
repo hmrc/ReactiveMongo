@@ -27,8 +27,7 @@ case class Index(
     version: Option[Int] = None, // let MongoDB decide
     // TODO: storageEngine (new for Mongo3)
     partialFilter: Option[BSONDocument] = None,
-    options: BSONDocument = BSONDocument()
-) {
+    options: BSONDocument = BSONDocument()) {
 
   /** The name of the index (a default one is computed if none). */
   lazy val eventualName: String = name.getOrElse(key.foldLeft("") { (name, kv) =>

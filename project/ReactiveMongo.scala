@@ -178,19 +178,17 @@ object ReactiveMongoBuild extends Build {
 
   val driverCleanup = taskKey[Unit]("Driver compilation cleanup")
 
-
-  val slf4jVer = "1.7.12"
+  val slf4jVer = "1.7.25"
   val log4jVer = "2.5"
 
   val slf4j = "org.slf4j" % "slf4j-api" % slf4jVer
-  val slf4jSimple = "org.slf4j" % "slf4j-simple" % slf4jVer
 
   val logApi = Seq(
-    slf4j % "provided",
-    "org.apache.logging.log4j" % "log4j-api" % log4jVer // deprecated
-  ) ++ Seq("log4j-core", "log4j-slf4j-impl").map(
-    "org.apache.logging.log4j" % _ % log4jVer % Test)
-
+    slf4j,
+    "org.apache.logging.log4j" % "log4j-api" % log4jVer % Test,
+    "org.apache.logging.log4j" % "log4j-core" % log4jVer % Test,
+    "org.apache.logging.log4j" % "log4j-slf4j-impl" % log4jVer % Test
+  )
   private val driverFilter: Seq[(File, String)] => Seq[(File, String)] = {
     (_: Seq[(File, String)]).filter {
       case (file, name) =>
