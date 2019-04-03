@@ -3,3 +3,4 @@ leakDetectionExemptions:
    filePath: '/.travis_scripts/server.pem'
  - ruleId: 'filename_private_key_5'
    filePath: '/.travis_scripts/server.pem'
+repoVisibility: public_0C3F0CE3E6E6448FAD341E7BFA50FCD333E06A20CFF05FCACE61154DDBBADF71
