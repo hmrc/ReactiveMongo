@@ -55,12 +55,14 @@ object ConnectionListener {
       val paths: java.util.Enumeration[URL] =
         if (reactiveMongoLoader == null) {
           ClassLoader.getSystemResources(staticListenerBinderPath)
-        } else {
+        }
+        else {
           reactiveMongoLoader.getResources(staticListenerBinderPath)
         }
 
       while (paths.hasMoreElements()) binderPathSet.add(paths.nextElement())
-    } catch {
+    }
+    catch {
       case ioe: java.io.IOException =>
         logger.warn("Error getting resources from path", ioe);
     }

@@ -57,7 +57,8 @@ object NettyEmbedder {
 
       if (cause.isInstanceOf[CodecEmbedderException]) {
         throw t.asInstanceOf[CodecEmbedderException]
-      } else throw new CodecEmbedderException(t)
+      }
+      else throw new CodecEmbedderException(t)
     }
   }
 
@@ -87,8 +88,7 @@ object NettyEmbedder {
       def exceptionCaught(
         pipeline: ChannelPipeline,
         e: ChannelEvent,
-        cause: ChannelPipelineException
-      ): Unit = {
+        cause: ChannelPipelineException): Unit = {
         def actualCause: Throwable = Option(cause.getCause).getOrElse(cause)
         throw new CodecEmbedderException(actualCause);
       }
@@ -97,7 +97,8 @@ object NettyEmbedder {
         try {
           task.run()
           return Channels.succeededFuture(pipeline.getChannel())
-        } catch {
+        }
+        catch {
           case t: Throwable =>
             return Channels.failedFuture(pipeline.getChannel(), t);
         }
@@ -119,12 +120,12 @@ object NettyEmbedder {
       new ChannelDownstreamHandler {
         def handleDownstream(ctx: ChannelHandlerContext, evt: ChannelEvent) =
           handler(evt)
-      }
-    )
+      })
 
     try {
       f(em.getChannel())
-    } finally {
+    }
+    finally {
       em.finish(); ()
     }
   }
@@ -137,10 +138,8 @@ class EmbeddedChannel(
   id: Int,
   coned: Boolean,
   pipeline: ChannelPipeline,
-  sink: ChannelSink
-) extends AbstractChannel(
-  id, null, NettyEmbedder.ChannelFactory(), pipeline, sink
-) {
+  sink: ChannelSink) extends AbstractChannel(
+  id, null, NettyEmbedder.ChannelFactory(), pipeline, sink) {
   @volatile private var connected = coned
 
   val config = new DefaultChannelConfig()
@@ -161,8 +160,7 @@ class EmbeddedChannel(
 }
 
 final class CodecEmbedderException(
-    msg: String, cause: Throwable
-) extends RuntimeException() {
+    msg: String, cause: Throwable) extends RuntimeException() {
   def this() = this(null, null)
   def this(msg: String) = this(msg, null)
   def this(cause: Throwable) = this(null, cause)
@@ -175,8 +173,7 @@ final class CodecEmbedderException(
 abstract class AbstractCodecEmbedder[E: ClassTag](
     chanId: Int,
     connected: Boolean,
-    handlers: Seq[ChannelHandler]
-) {
+    handlers: Seq[ChannelHandler]) {
   private val pipeline = NettyEmbedder.ChannelPipeline()
   private val productQueue: Queue[Object] = new LinkedList[Object]()
   private val sink = NettyEmbedder.ChannelSink(productQueue)
@@ -191,8 +188,7 @@ abstract class AbstractCodecEmbedder[E: ClassTag](
     chanId: Int,
     connected: Boolean,
     cbf: ChannelBufferFactory,
-    handlers: ChannelHandler*
-  ) = {
+    handlers: ChannelHandler*) = {
     this(chanId, connected, handlers)
     channel.getConfig().setBufferFactory(cbf)
   }
@@ -207,14 +203,17 @@ abstract class AbstractCodecEmbedder[E: ClassTag](
   private def configurePipeline(handlers: Seq[ChannelHandler]) {
     if (handlers == null) {
       throw new NullPointerException("handlers")
-    } else if (handlers.size == 0) {
+    }
+    else if (handlers.size == 0) {
       throw new IllegalArgumentException(s"handlers should contain at least one ${classOf[ChannelHandler].getSimpleName()}.")
-    } else (0 until handlers.size).foreach { i =>
+    }
+    else (0 until handlers.size).foreach { i =>
       val h: ChannelHandler = handlers(i)
 
       if (h == null) {
         throw new NullPointerException(s"handlers[$i]")
-      } else pipeline.addLast(String.valueOf(i), h)
+      }
+      else pipeline.addLast(String.valueOf(i), h)
     }
 
     pipeline.addLast("SINK", sink)
