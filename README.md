@@ -1,5 +1,7 @@
 # ReactiveMongo
 
+**Deprecated** This fork has been deprecated.
+
 ReactiveMongo is a scala driver that provides fully non-blocking and asynchronous I/O operations.
 
 ## Usage
